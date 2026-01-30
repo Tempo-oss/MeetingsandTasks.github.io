@@ -75,6 +75,18 @@
             throw new Error("Failed to initialize Supabase client.");
         }
 
+        // --- Utils ---
+        const getTodayISO = () => {
+            const d = new Date();
+            return new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        };
+
+        const getTomorrowISO = () => {
+            const d = new Date();
+            d.setDate(d.getDate() + 1);
+            return new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        };
+
         // --- Icons ---
         const Icon = ({ name, className, ...props }) => {
             const icons = {
@@ -155,6 +167,27 @@
             { id: 'u4', name: 'Dana Lee', role: 'VP Engineering', avatar: 'DL', color: 'bg-orange-500' },
         ];
 
+        // --- Dynamic Seed Data ---
+        const TODAY = getTodayISO();
+        const TOMORROW = getTomorrowISO();
+
+        const SEED_MEETINGS = [
+            { id: 'm1', title: 'Q3 Product Roadmap', date: TODAY, time: '10:00 AM', duration: '1h', participants: ['u1', 'u2', 'u3', 'u4'], docId: 'd1', synced: true, platform: 'Google Meet' },
+            { id: 'm2', title: 'Design Huddle', date: TODAY, time: '02:00 PM', duration: '45m', participants: ['u1', 'u3'], docId: 'd2', synced: true, platform: 'Zoom' },
+            { id: 'm3', title: 'Weekly Engineering', date: TOMORROW, time: '11:00 AM', duration: '1h', participants: ['u2', 'u4'], docId: 'd3', synced: true, platform: 'Google Meet' }
+        ];
+
+        const SEED_TASKS = [
+            { id: 't1', meetingId: 'm1', text: 'Finalize Q3 scope', assignee: 'u1', done: false },
+            { id: 't2', meetingId: 'm1', text: 'Update Jira', assignee: 'u2', done: true },
+        ];
+
+        const SEED_DOCS = {
+            'd1': "<h1>Q3 Roadmap</h1><p>Goals for the quarter...</p>",
+            'd2': "<h1>Design Notes</h1><p>Accessibility standards...</p>",
+            'd3': "<h1>Eng Sync</h1><p>Migration plan...</p>"
+        };
+
         // --- Components ---
 
         const UserAvatar = ({ user, size = 'md' }) => {
@@ -232,6 +265,20 @@
                 </div>
             );
         };
+
+        const TaskCard = ({ task, meetingTitle, onToggle }) => (
+            <div className="bg-white border border-gray-200 rounded-lg p-4 flex items-start space-x-3 hover:shadow-sm transition-shadow">
+                <button onClick={() => onToggle(task.id, !task.done)} className={`mt-0.5 ${task.done ? 'text-green-600' : 'text-gray-400 hover:text-green-600'}`}>
+                    <Icon name={task.done ? "CheckCircle2" : "Circle"} className="w-5 h-5" />
+                </button>
+                <div className="flex-1">
+                    <p className={`text-sm font-medium ${task.done ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{task.text}</p>
+                    <p className="text-xs text-gray-500 mt-1 flex items-center">
+                        <span className="bg-gray-100 px-2 py-0.5 rounded text-gray-600 truncate max-w-[200px]">From: {meetingTitle}</span>
+                    </p>
+                </div>
+            </div>
+        );
 
         const GoogleDocEditor = ({ docContent, title, onSave }) => {
             const [localContent, setLocalContent] = useState(docContent);
@@ -333,10 +380,16 @@
             const [session, setSession] = useState(null);
             const [currentUser, setCurrentUser] = useState(null);
             const [view, setView] = useState('dashboard');
+            const [dashboardViewMode, setDashboardViewMode] = useState('meetings'); // 'meetings' | 'tasks'
+            const [selectedDate, setSelectedDate] = useState(getTodayISO());
             const [selectedMeetingId, setSelectedMeetingId] = useState(null);
+            
+            // Data State
             const [meetings, setMeetings] = useState([]);
             const [tasks, setTasks] = useState([]);
             const [docs, setDocs] = useState({});
+            
+            // Status State
             const [dbStatus, setDbStatus] = useState('connecting'); 
             const [errorMsg, setErrorMsg] = useState('');
             const [loading, setLoading] = useState(true);
@@ -480,11 +533,13 @@
                         const mId = event.id;
                         const docId = `doc_${event.id}`;
                         const start = new Date(event.start.dateTime || event.start.date);
+                        // Using ISO string YYYY-MM-DD for consistency
+                        const dateStr = new Date(start.getTime() - (start.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
                         
                         await supabase.from('meetings').upsert({
                             id: mId,
                             title: event.summary || '(No Title)',
-                            date: start.toLocaleDateString(),
+                            date: dateStr,
                             time: start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                             duration: '1h', // Default estimate
                             participants: [currentUser.id], // Assume self is participant
@@ -512,6 +567,24 @@
                 }
             };
 
+            const seedDatabase = async () => {
+                if (dbStatus === 'setup_required') return alert("Please setup tables first (see error box).");
+                try {
+                    const seedMeetings = SEED_MEETINGS.map(m => {
+                        if (currentUser) {
+                            if (m.id === 'm1') return { ...m, participants: [...m.participants, currentUser.id] };
+                        }
+                        return m;
+                    });
+
+                    for (const m of seedMeetings) await supabase.from('meetings').upsert({ id: m.id, title: m.title, date: m.date, time: m.time, duration: m.duration, participants: m.participants, doc_id: m.docId, google_calendar_id: m.googleCalendarId, synced: m.synced, platform: m.platform });
+                    for (const t of SEED_TASKS) await supabase.from('tasks').upsert({ id: t.id, meeting_id: t.meetingId, text: t.text, assignee: t.assignee, done: t.done });
+                    for (const d of Object.entries(SEED_DOCS)) await supabase.from('docs').upsert({ id: d[0], content: d[1] });
+                    
+                    fetchData();
+                } catch (e) { alert("Seed failed: " + e.message); }
+            };
+
             const handleDocSave = async (content) => {
                 if(!selectedMeetingId) return;
                 const m = meetings.find(x => x.id === selectedMeetingId);
@@ -521,10 +594,27 @@
                 }
             };
 
+            const handleTaskToggle = async (taskId, currentDone) => {
+                setTasks(prev => prev.map(t => t.id === taskId ? { ...t, done: !currentDone } : t));
+                if (dbStatus === 'connected') {
+                    await supabase.from('tasks').update({ done: !currentDone }).eq('id', taskId);
+                }
+            };
+
             // Filter Logic
             const myMeetings = meetings.filter(m => {
                 if (!currentUser) return false;
-                return m.participants && Array.isArray(m.participants) && m.participants.includes(currentUser.id);
+                const isParticipant = m.participants && Array.isArray(m.participants) && m.participants.includes(currentUser.id);
+                // Basic date matching (string comparison YYYY-MM-DD)
+                const isDateMatch = m.date === selectedDate;
+                return isParticipant && isDateMatch;
+            });
+
+            // Flatten all tasks for the "My Tasks" view
+            const myTasks = tasks.filter(t => {
+                // If we want tasks assigned to user: t.assignee === currentUser.id
+                // For now, let's just show all tasks in the system to be safe/visible
+                return true; 
             });
 
             if (loading) return null; // Initial spinner in HTML handles this
@@ -545,11 +635,43 @@
 
                         <main className="flex-1 overflow-y-auto p-6">
                             <div className="max-w-5xl mx-auto">
-                                <div className="mb-6">
-                                    <h2 className="text-2xl font-bold">Upcoming Meetings</h2>
-                                    <p className="text-gray-500 text-sm mt-1">
-                                        Viewing calendar for {currentUser.name}
-                                    </p>
+                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                                    <div>
+                                        <h2 className="text-2xl font-bold text-gray-900">
+                                            {dashboardViewMode === 'meetings' ? 'My Meetings' : 'My Tasks'}
+                                        </h2>
+                                        <p className="text-gray-500 text-sm mt-1">
+                                            {currentUser.name} • {new Date(selectedDate).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+                                        </p>
+                                    </div>
+                                    <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+                                        {/* View Toggle */}
+                                        <div className="flex items-center space-x-1 bg-white p-1 rounded-lg border border-gray-200 shadow-sm w-full sm:w-auto">
+                                             <button
+                                                onClick={() => setDashboardViewMode('meetings')}
+                                                className={`flex-1 sm:flex-none px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${dashboardViewMode === 'meetings' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                                             >
+                                                Meetings
+                                             </button>
+                                             <button
+                                                onClick={() => setDashboardViewMode('tasks')}
+                                                className={`flex-1 sm:flex-none px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${dashboardViewMode === 'tasks' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                                             >
+                                                Tasks
+                                             </button>
+                                        </div>
+                                        
+                                        {/* Date Picker */}
+                                        <div className="relative w-full sm:w-auto">
+                                            <input
+                                                type="date"
+                                                value={selectedDate}
+                                                onChange={(e) => setSelectedDate(e.target.value)}
+                                                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+                                            />
+                                            <Icon name="Calendar" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+                                        </div>
+                                    </div>
                                 </div>
                                 
                                 {dbStatus === 'setup_required' && (
@@ -561,14 +683,32 @@
                                     </div>
                                 )}
 
-                                {myMeetings.length > 0 ? (
-                                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                        {myMeetings.map(m => <MeetingCard key={m.id} meeting={m} users={currentUser ? [currentUser, ...MOCK_DB_USERS] : MOCK_DB_USERS} onClick={() => { setSelectedMeetingId(m.id); setView('meeting'); }} />)}
-                                    </div>
+                                {dashboardViewMode === 'meetings' ? (
+                                    <>
+                                        {myMeetings.length > 0 ? (
+                                            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                                {myMeetings.map(m => <MeetingCard key={m.id} meeting={m} users={currentUser ? [currentUser, ...MOCK_DB_USERS] : MOCK_DB_USERS} onClick={() => { setSelectedMeetingId(m.id); setView('meeting'); }} />)}
+                                            </div>
+                                        ) : (
+                                            <div className="text-center py-20 bg-white rounded-xl border border-dashed">
+                                                <p className="text-gray-500">No meetings found for {selectedDate}.</p>
+                                                {dbStatus === 'empty' && <p className="text-sm text-indigo-500 mt-2">Click "Seed" in the header to load data.</p>}
+                                            </div>
+                                        )}
+                                    </>
                                 ) : (
-                                    <div className="text-center py-20 bg-white rounded-xl border border-dashed">
-                                        <p className="text-gray-500">No meetings found for you.</p>
-                                        {dbStatus === 'empty' && <p className="text-sm text-indigo-500 mt-2">Click "Sync Calendar" to pull from Google.</p>}
+                                    /* Tasks View */
+                                    <div className="space-y-3">
+                                        {myTasks.length > 0 ? (
+                                            myTasks.map(t => {
+                                                const mtg = meetings.find(m => m.id === t.meetingId);
+                                                return <TaskCard key={t.id} task={t} meetingTitle={mtg ? mtg.title : 'Unknown Meeting'} onToggle={handleTaskToggle} />;
+                                            })
+                                        ) : (
+                                            <div className="text-center py-12 bg-white rounded-xl border border-dashed text-gray-500">
+                                                No tasks found.
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
