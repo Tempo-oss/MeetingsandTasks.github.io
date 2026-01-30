@@ -235,4 +235,15 @@ const App = () => {
             <AppHeader currentUser={currentUser} onLogout={handleLogout} dbStatus={dbStatus} isDemo={isDemo} onBack={()=>setView('dashboard')} title={m.title}/>
             <div className="flex-1 flex overflow-hidden">
                 <div className="flex-1 p-4 bg-gray-100">
-                    <GoogleDocEditor title={m.title} docContent={docs[m.docId]} onSave={handleDoc
+                    <GoogleDocEditor title={m.title} docContent={docs[m.docId]} onSave={handleDocSave}/>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+
+</script>
+</body>
+</html>
