@@ -177,7 +177,7 @@
         };
 
         // SHARED HEADER COMPONENT
-        const AppHeader = ({ currentUser, onLogout, onClear, onSync, dbStatus, onBack, title, isSyncing }) => (
+        const AppHeader = ({ currentUser, onLogout, onClear, onSync, dbStatus, onBack, title, isSyncing, syncRange, setSyncRange }) => (
             <header className="bg-white border-b h-16 flex items-center justify-between px-4 sm:px-6 shrink-0 sticky top-0 z-20">
                 <div className="flex items-center space-x-3">
                     {onBack && (
@@ -196,10 +196,20 @@
                 </div>
                 <div className="flex items-center space-x-3 sm:space-x-4">
                     {onSync && (dbStatus === 'empty' || dbStatus === 'connected') && 
-                        <button onClick={onSync} disabled={isSyncing} className="text-sm font-medium text-indigo-600 hover:text-indigo-800 flex items-center disabled:opacity-50">
-                            <Icon name="RefreshCw" className={`w-4 h-4 mr-1 ${isSyncing ? 'animate-spin' : ''}`}/> 
-                            <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Sync Calendar'}</span>
-                        </button>
+                        <div className="flex items-center space-x-2">
+                            <select 
+                                value={syncRange}
+                                onChange={(e) => setSyncRange(e.target.value)}
+                                className="text-xs border-gray-300 rounded border p-1 text-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 hidden sm:block"
+                            >
+                                <option value="upcoming">Upcoming</option>
+                                <option value="past_month">Past 30 Days</option>
+                            </select>
+                            <button onClick={onSync} disabled={isSyncing} className="text-sm font-medium text-indigo-600 hover:text-indigo-800 flex items-center disabled:opacity-50">
+                                <Icon name="RefreshCw" className={`w-4 h-4 mr-1 ${isSyncing ? 'animate-spin' : ''}`}/> 
+                                <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Sync'}</span>
+                            </button>
+                        </div>
                     }
                     {onClear && (dbStatus === 'empty' || dbStatus === 'connected') && 
                         <button onClick={onClear} className="text-sm font-medium text-red-500 hover:text-red-700 flex items-center" title="Delete All Data">
@@ -288,6 +298,86 @@
             );
         };
 
+        const TaskManager = ({ tasks, users, onToggle, onAdd, meetingId, currentUserId }) => {
+            const [newTaskText, setNewTaskText] = useState('');
+            const [assignee, setAssignee] = useState(currentUserId || users[0].id);
+
+            const handleAdd = (e) => {
+                e.preventDefault();
+                if (!newTaskText.trim()) return;
+                onAdd(meetingId, newTaskText, assignee);
+                setNewTaskText('');
+            };
+
+            const activeTasks = tasks.filter(t => !t.done);
+            const completedTasks = tasks.filter(t => t.done);
+
+            return (
+                <div className="h-full flex flex-col bg-white border-l border-gray-200 w-80 shrink-0">
+                    <div className="p-4 border-b border-gray-200 bg-gray-50">
+                        <h2 className="font-semibold text-gray-800 flex items-center">
+                            <Icon name="CheckSquare" className="w-4 h-4 mr-2 text-indigo-600" />
+                            Action Items
+                        </h2>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                        <div className="space-y-3">
+                            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">To Do</h3>
+                            {activeTasks.length === 0 && <p className="text-sm text-gray-400 italic">No open tasks.</p>}
+                            {activeTasks.map(task => {
+                                const assignedUser = users.find(u => u.id === task.assignee);
+                                return (
+                                    <div key={task.id} className="group bg-white border border-gray-200 rounded-lg p-3 hover:shadow-sm transition-all">
+                                        <div className="flex items-start space-x-3">
+                                            <button onClick={() => onToggle(task.id, !task.done)} className="mt-0.5 text-gray-400 hover:text-green-600 transition-colors">
+                                                <Icon name="Circle" className="w-5 h-5" />
+                                            </button>
+                                            <div className="flex-1">
+                                                <p className="text-sm text-gray-800">{task.text}</p>
+                                                <div className="mt-2 flex items-center justify-between">
+                                                    <div className="flex items-center space-x-1.5 bg-gray-100 px-2 py-0.5 rounded-full">
+                                                        <UserAvatar user={assignedUser} size="xs" />
+                                                        <span className="text-xs text-gray-600">{assignedUser ? assignedUser.name.split(' ')[0] : 'Unassigned'}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        {completedTasks.length > 0 && (
+                            <div className="space-y-3 pt-4 border-t border-gray-100">
+                                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Completed</h3>
+                                {completedTasks.map(task => (
+                                    <div key={task.id} className="flex items-center space-x-3 p-2 opacity-60">
+                                        <button onClick={() => onToggle(task.id, !task.done)} className="text-green-600">
+                                            <Icon name="CheckCircle2" className="w-5 h-5" />
+                                        </button>
+                                        <span className="text-sm text-gray-500 line-through">{task.text}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    <div className="p-4 border-t border-gray-200 bg-gray-50">
+                        <form onSubmit={handleAdd}>
+                            <input type="text" placeholder="New task..." className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500 mb-2 p-2 border" value={newTaskText} onChange={(e) => setNewTaskText(e.target.value)} />
+                            <div className="flex items-center space-x-2">
+                                <select className="flex-1 text-sm border-gray-300 rounded-md shadow-sm border p-1.5" value={assignee} onChange={(e) => setAssignee(e.target.value)}>
+                                    <option value={currentUserId}>Me</option>
+                                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                </select>
+                                <button type="submit" disabled={!newTaskText.trim()} className="bg-indigo-600 text-white p-1.5 rounded-md hover:bg-indigo-700 disabled:opacity-50">
+                                    <Icon name="Plus" className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
         const LoginScreen = ({ onLogin, onEmailLogin }) => {
             const [email, setEmail] = useState('');
             const [sent, setSent] = useState(false);
@@ -365,6 +455,7 @@
             const [dashboardViewMode, setDashboardViewMode] = useState('meetings'); // 'meetings' | 'tasks'
             const [selectedDate, setSelectedDate] = useState(getTodayISO());
             const [selectedMeetingId, setSelectedMeetingId] = useState(null);
+            const [syncRange, setSyncRange] = useState('upcoming'); // 'upcoming' | 'past_month'
             
             // Data State
             const [meetings, setMeetings] = useState([]);
@@ -491,7 +582,6 @@
 
             // REAL GOOGLE CALENDAR SYNC
             const handleSync = async () => {
-                // If logged in via Magic Link, provider_token might be missing
                 if (!session?.provider_token) {
                     alert("Sync Unavailable: Missing Google Access Token.\n\nExplanation: This usually happens if you refreshed the page after logging in (tokens are not persisted for security).\n\nSolution: Please 'Log Out' and 'Sign in with Google' again immediately before syncing.");
                     return;
@@ -499,15 +589,20 @@
 
                 setIsSyncing(true);
                 try {
-                    // Fetch upcoming events from now
-                    const timeMin = new Date().toISOString();
-                    const resp = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?maxResults=10&orderBy=startTime&singleEvents=true&timeMin=${timeMin}`, {
+                    // Fetch range
+                    let timeMin = new Date().toISOString();
+                    if (syncRange === 'past_month') {
+                        const d = new Date();
+                        d.setDate(d.getDate() - 30);
+                        timeMin = d.toISOString();
+                    }
+
+                    const resp = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?maxResults=50&orderBy=startTime&singleEvents=true&timeMin=${timeMin}`, {
                         headers: { Authorization: `Bearer ${session.provider_token}` }
                     });
                     
                     if (!resp.ok) {
                         const errData = await resp.json();
-                        // Better error parsing for the user
                         if (errData.error?.message?.includes("Google Calendar API has not been used")) {
                              throw new Error("API_DISABLED");
                         }
@@ -517,7 +612,7 @@
                     const data = await resp.json();
                     
                     if (data.items.length === 0) {
-                        alert("Connection successful, but 0 upcoming events found in your primary Google Calendar.");
+                        alert("Connection successful, but 0 events found in your primary Google Calendar for this range.");
                         setIsSyncing(false);
                         return;
                     }
@@ -527,27 +622,46 @@
                         const mId = event.id;
                         const docId = `doc_${event.id}`;
                         const start = new Date(event.start.dateTime || event.start.date);
-                        // Using ISO string YYYY-MM-DD for consistency
                         const offset = start.getTimezoneOffset() * 60000;
                         const dateStr = new Date(start.getTime() - offset).toISOString().split('T')[0];
                         
+                        // Parse description for tasks
+                        const description = event.description || '';
+                        // Regex to find lines starting with [ ] or - [ ] or TODO:
+                        const taskRegex = /(?:^|\n)(?:-? ?\[ ?\]|TODO:|Task:)\s*(.+)/gi;
+                        let match;
+                        while ((match = taskRegex.exec(description)) !== null) {
+                            const taskText = match[1].trim();
+                            if (taskText) {
+                                // Create task if it doesn't exist (basic check)
+                                // Ideally we'd have a unique ID for the task, but here we generate one
+                                const taskId = `t_${event.id}_${taskText.substring(0, 5).replace(/\s/g, '')}`;
+                                await supabase.from('tasks').upsert({
+                                    id: taskId,
+                                    meeting_id: mId,
+                                    text: taskText,
+                                    assignee: currentUser.id,
+                                    done: false
+                                }, { ignoreDuplicates: true }); // Prevent overwriting status if exists
+                            }
+                        }
+
                         await supabase.from('meetings').upsert({
                             id: mId,
                             title: event.summary || '(No Title)',
                             date: dateStr,
                             time: start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                            duration: '1h', // Default estimate
-                            participants: [currentUser.id], // Assume self is participant
+                            duration: '1h',
+                            participants: [currentUser.id],
                             doc_id: docId,
                             google_calendar_id: event.id,
                             synced: true,
                             platform: 'Google Calendar'
                         });
                         
-                        // Create empty doc if not exists
                         await supabase.from('docs').upsert({ 
                             id: docId, 
-                            content: `<h1>${event.summary}</h1><p>${event.description || 'No description provided.'}</p>` 
+                            content: `<h1>${event.summary}</h1><p>${description || 'No description provided.'}</p>` 
                         }, { onConflict: 'id', ignoreDuplicates: true });
                     }
                     
@@ -570,11 +684,8 @@
                 if (!confirm("Are you sure? This will delete ALL meetings, tasks, and notes from your database. This cannot be undone.")) return;
                 
                 try {
-                    // Delete all tasks
                     const { error: tErr } = await supabase.from('tasks').delete().neq('id', '0'); 
-                    // Delete all docs
                     const { error: dErr } = await supabase.from('docs').delete().neq('id', '0');
-                    // Delete all meetings
                     const { error: mErr } = await supabase.from('meetings').delete().neq('id', '0');
                     
                     if (tErr || dErr || mErr) throw new Error("Deletion partially failed");
@@ -606,19 +717,18 @@
             const myMeetings = meetings.filter(m => {
                 if (!currentUser) return false;
                 const isParticipant = m.participants && Array.isArray(m.participants) && m.participants.includes(currentUser.id);
-                // Basic date matching (string comparison YYYY-MM-DD)
+                // Filter by selected date
+                // Note: syncing past month will load data, but this filter might hide it if selectedDate is today
+                // We should probably allow showing all if range is different or just filter by day.
+                // Let's keep date filter for "My Meetings" view strict to selectedDate
                 const isDateMatch = m.date === selectedDate;
                 return isParticipant && isDateMatch;
             });
 
             // Flatten all tasks for the "My Tasks" view
-            const myTasks = tasks.filter(t => {
-                // If we want tasks assigned to user: t.assignee === currentUser.id
-                // For now, let's just show all tasks in the system to be safe/visible
-                return true; 
-            });
+            const myTasks = tasks.filter(t => true);
 
-            if (loading) return null; // Initial spinner in HTML handles this
+            if (loading) return null;
 
             if (!session) return <LoginScreen onLogin={handleGoogleLogin} onEmailLogin={handleEmailLogin} />;
 
@@ -632,7 +742,9 @@
                             onSync={handleSync}
                             onClear={clearDatabase}
                             dbStatus={dbStatus}
-                            isSyncing={isSyncing} 
+                            isSyncing={isSyncing}
+                            syncRange={syncRange}
+                            setSyncRange={setSyncRange}
                         />
 
                         <main className="flex-1 overflow-y-auto p-6">
@@ -647,7 +759,6 @@
                                         </p>
                                     </div>
                                     <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-                                        {/* View Toggle */}
                                         <div className="flex items-center space-x-1 bg-white p-1 rounded-lg border border-gray-200 shadow-sm w-full sm:w-auto">
                                              <button
                                                 onClick={() => setDashboardViewMode('meetings')}
@@ -663,7 +774,6 @@
                                              </button>
                                         </div>
                                         
-                                        {/* Date Picker */}
                                         <div className="relative w-full sm:w-auto">
                                             <input
                                                 type="date"
@@ -694,7 +804,7 @@
                                         ) : (
                                             <div className="text-center py-20 bg-white rounded-xl border border-dashed">
                                                 <p className="text-gray-500">No meetings found for {selectedDate}.</p>
-                                                {dbStatus === 'empty' && <p className="text-sm text-indigo-500 mt-2">Click "Sync Calendar" to load from Google.</p>}
+                                                {dbStatus === 'empty' && <p className="text-sm text-indigo-500 mt-2">Click "Sync" to load from Google.</p>}
                                             </div>
                                         )}
                                     </>
@@ -736,18 +846,21 @@
                         <div className="flex-1 p-4 bg-gray-100">
                             <GoogleDocEditor title={m.title} docContent={docs[m.docId]} onSave={handleDocSave} />
                         </div>
-                        <div className="w-80 border-l bg-white p-4">
-                            <h3 className="font-bold mb-4">Tasks</h3>
-                            <div className="space-y-2">
-                                {tasks.filter(t => t.meetingId === m.id).map(t => (
-                                    <div key={t.id} className="flex items-center space-x-2 p-2 border rounded">
-                                        <div className={`w-4 h-4 rounded-full border ${t.done ? 'bg-green-500 border-green-500' : 'border-gray-300'}`}></div>
-                                        <span className={t.done ? 'line-through text-gray-400' : ''}>{t.text}</span>
-                                    </div>
-                                ))}
-                                {tasks.filter(t => t.meetingId === m.id).length === 0 && <p className="text-gray-400 text-sm italic">No tasks yet.</p>}
-                            </div>
-                        </div>
+                        {/* ENABLED TASK MANAGER */}
+                        <TaskManager 
+                            tasks={tasks.filter(t => t.meetingId === m.id)}
+                            users={currentUser ? [currentUser, ...MOCK_DB_USERS] : MOCK_DB_USERS}
+                            currentUserId={currentUser ? currentUser.id : null}
+                            onToggle={handleTaskToggle}
+                            onAdd={(mId, text, assignee) => {
+                                const newId = `t_${Date.now()}`;
+                                setTasks(prev => [...prev, { id: newId, meetingId: mId, text, assignee, done: false }]);
+                                if (dbStatus === 'connected') {
+                                    supabase.from('tasks').insert({ id: newId, meeting_id: mId, text, assignee, done: false }).then();
+                                }
+                            }}
+                            meetingId={m.id}
+                        />
                     </div>
                 </div>
             );
