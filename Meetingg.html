@@ -42,6 +42,9 @@
         body { font-family: 'Inter', sans-serif; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .prose h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 1rem; color: #111827; }
+        .prose p { margin-bottom: 0.75rem; line-height: 1.6; color: #374151; }
+        .prose:focus { outline: none; }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-900 h-screen overflow-hidden">
@@ -1264,9 +1267,15 @@ END $$;
 
             const myMeetings = meetings.filter(m => {
                 if (!currentUser) return false;
-                const isParticipant = m.participants && Array.isArray(m.participants) && m.participants.includes(currentUser.id);
+                // Strict participant check: Must be in the list by ID or Email
+                const parts = m.participants || [];
+                const isParticipant = parts.some(p => {
+                    const pId = typeof p === 'object' ? (p.id || p.email) : p;
+                    // Check against current user ID and Email
+                    return pId === currentUser.id || pId === currentUser.email;
+                });
                 const isDateMatch = m.date === selectedDate;
-                return isDateMatch;
+                return isParticipant && isDateMatch;
             });
 
             // --- FILTER TASKS LOGIC ---
@@ -1274,27 +1283,27 @@ END $$;
                 // First filter by SCOPE (Me vs My Team)
                 let scopeFiltered = [];
                 if (taskScope === 'me') {
-                    scopeFiltered = tasks.filter(t => t.assignee === currentUser?.id || t.assignee === currentUser?.name); // Fallback for name based assignees
+                    scopeFiltered = tasks.filter(t => 
+                        t.assignee === currentUser?.id || 
+                        t.assignee === currentUser?.email || 
+                        t.assignee === currentUser?.name
+                    ); 
                 } else if (taskScope === 'team') {
                     // Find teams user manages
-                    // 1. Check if user is owner of any team
-                    // 2. Check if user is in 'Managers' team and has managed_teams set
-                    
-                    // Simple check for now based on teamMembers list
                     const myManagedTeams = [];
-                    const userInTeam = teamMembers.find(tm => tm.email === currentUser?.name); // Using name or email match from auth
-                    // A better way is using email from auth session
-                    const userEmail = session?.user?.email;
+                    const userEmail = currentUser?.email || session?.user?.email;
                     
-                    // Find user in team_members
+                    // Find user in team_members to check roles
                     const meInTeam = teamMembers.find(tm => tm.email === userEmail);
                     
                     if (meInTeam) {
-                        // Direct ownership
-                        const teamsOwned = teamMembers.filter(tm => tm.email === userEmail && tm.role === 'Owner').map(tm => tm.team);
+                        // Direct ownership of a team
+                        const teamsOwned = teamMembers
+                            .filter(tm => tm.email === userEmail && tm.role === 'Owner')
+                            .map(tm => tm.team);
                         myManagedTeams.push(...teamsOwned);
                         
-                        // Managers delegation
+                        // Delegated management (Managers team member managing other teams)
                         if (meInTeam.team === 'Managers' && meInTeam.managed_teams) {
                             myManagedTeams.push(...meInTeam.managed_teams);
                         }
@@ -1310,8 +1319,8 @@ END $$;
 
                 // Second filter by STATUS (All / Pending / Completed)
                 if (taskFilter === 'all') return scopeFiltered;
-                if (taskFilter === 'completed') return scopeFiltered.filter(t => t.status === 'completed' || t.done);
-                if (taskFilter === 'pending') return scopeFiltered.filter(t => t.status !== 'completed' && !t.done);
+                if (taskFilter === 'completed') return scopeFiltered.filter(t => (t.status === 'completed' || t.done));
+                if (taskFilter === 'pending') return scopeFiltered.filter(t => (t.status !== 'completed' && !t.done));
                 return scopeFiltered;
             }, [tasks, taskFilter, taskScope, currentUser, teamMembers, session]);
 
