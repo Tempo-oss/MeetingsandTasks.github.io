@@ -1083,8 +1083,8 @@ CREATE TRIGGER on_task_created
                                                         key={t.id} 
                                                         task={t} 
                                                         meetingTitle={mtg ? mtg.title : 'Unknown Meeting'} 
-                                                        onStatusChange={handleUpdateTask} 
-                                                        onObstacleChange={handleUpdateTask}
+                                                        onStatusChange={(id, val) => handleUpdateTask(id, { status: val, done: val === 'completed' })}
+                                                        onObstacleChange={(id, val) => handleUpdateTask(id, { obstacles: val })}
                                                     />
                                                 );
                                             })
