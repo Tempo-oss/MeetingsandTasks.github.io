@@ -18,6 +18,7 @@
                         <h2 style="font-size: 1.5rem; font-weight: bold; margin-bottom: 0.5rem;">Startup Error</h2>
                         <div style="background: #fff; padding: 1rem; border-radius: 0.5rem; border: 1px solid #FCA5A5; text-align: left; max-width: 600px; overflow-x: auto;">
                             <code style="font-family: monospace;">${msg}</code>
+                            <p style="margin-top: 8px; font-size: 0.8rem">Line: ${line} Col: ${col}</p>
                         </div>
                     </div>
                 `;
@@ -85,8 +86,10 @@
             const today = new Date();
             end.setHours(0,0,0,0);
             today.setHours(0,0,0,0);
+            
             const diffTime = end - today;
-            return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            return diffDays;
         };
 
         const DEPARTMENTS = ['Managers', 'Leaders', 'Quality', 'Training', 'HR', 'Mentors', 'WFM', 'Eng team'];
@@ -108,7 +111,7 @@
                 Trash2: <path d="M3 6h18 M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6 M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2 M10 11v6 M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 AlertCircle: <path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm-1-9h2m-2 4h2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 CheckSquare: <path d="m9 11 3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
-                FileText: <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z M14 3v5h5 M16 13H8 M16 17H8 M10 9H8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
+                FileText: <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z M14 2v6h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 Bold: <path d="M14 12a4 4 0 0 0 0-8H6v8 M15 20a4 4 0 0 0 0-8H6v8Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 Italic: <path d="M19 4h-9M14 20H5M15 4L9 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 Underline: <path d="M6 4v6a6 6 0 0 0 12 0V4 M4 20h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
@@ -123,13 +126,16 @@
                 Mail: <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z M22 6l-10 7L2 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 UserPlus: <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2 M8.5 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z M20 8v6M23 11h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 AlertTriangle: <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z M12 9v4 M12 17h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
+                FileText: <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z M14 3v5h5 M16 13H8 M16 17H8 M10 9H8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 PieChart: <path d="M21.21 15.89A10 10 0 1 1 8 2.83 M22 12A10 10 0 0 0 12 2v10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 Crown: <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 Briefcase: <path d="M20 7h-3a2 2 0 0 0-2-2h-6a2 2 0 0 0-2 2H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z M9 7V5h6v2 M12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 Hash: <path d="M4 9h16 M4 15h16 M10 3L8 21 M16 3l-2 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 Layers: <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 User: <g><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></g>,
-                Shield: <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                Shield: <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
+                Filter: <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
+                XCircle: <path d="M22 12A10 10 0 1 1 12 2a10 10 0 0 1 0 20zM15 9l-6 6M9 9l6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             };
             return (
                 <svg 
@@ -375,14 +381,63 @@ END $$;
         };
 
         const ReportsView = ({ meetings, tasks, attendees }) => {
+            // -- FILTERS STATE --
+            const [filterMeeting, setFilterMeeting] = useState('all');
+            const [filterOwner, setFilterOwner] = useState('all');
+            const [filterStatus, setFilterStatus] = useState('all');
+            const [filterDate, setFilterDate] = useState('');
+
+            // Extract Unique Options
+            const uniqueOwners = useMemo(() => {
+                const ownerIds = new Set(tasks.map(t => t.assignee));
+                const owners = [];
+                // Find user details for each ID/email in tasks
+                ownerIds.forEach(id => {
+                   const user = attendees.find(u => u.email === id || u.id === id);
+                   if (user) owners.push(user);
+                   else owners.push({ id, name: id, email: id }); // Fallback
+                });
+                // Deduplicate by email/id
+                const unique = new Map();
+                owners.forEach(o => unique.set(o.email || o.id, o));
+                return Array.from(unique.values());
+            }, [tasks, attendees]);
+
+            const uniqueMeetings = useMemo(() => {
+                const map = new Map();
+                meetings.forEach(m => map.set(m.id, m));
+                return Array.from(map.values());
+            }, [meetings]);
+
+            // Filter Logic
             const reportData = useMemo(() => {
                 const data = [];
                 meetings.forEach(meeting => {
+                     // 1. Meeting Filter
+                    if (filterMeeting !== 'all' && meeting.id !== filterMeeting) return;
+                    // 2. Date Filter
+                    if (filterDate && meeting.date !== filterDate) return;
+
                     const meetingTasks = tasks.filter(t => t.meetingId === meeting.id);
                     if (meetingTasks.length === 0) return;
 
                     const tasksByOwner = {};
+                    let hasVisibleTasks = false;
+
                     meetingTasks.forEach(task => {
+                        // 3. Owner Filter
+                        if (filterOwner !== 'all') {
+                             const matchesId = task.assignee === filterOwner;
+                             const matchesEmail = (attendees.find(u => u.id === filterOwner)?.email === task.assignee);
+                             if (!matchesId && !matchesEmail) return;
+                        }
+
+                        // 4. Status Filter
+                        const status = task.status || (task.done ? 'completed' : 'pending');
+                        if (filterStatus !== 'all' && status !== filterStatus) return;
+
+                        hasVisibleTasks = true;
+
                         const ownerId = task.assignee || 'Unassigned';
                         if (!tasksByOwner[ownerId]) {
                             const owner = attendees.find(u => (u.email === ownerId || u.id === ownerId)) || { name: 'Unknown', email: ownerId };
@@ -393,7 +448,7 @@ END $$;
                                 completedCount: 0
                             };
                         }
-                        const status = task.status || (task.done ? 'completed' : 'pending');
+                        
                         tasksByOwner[ownerId].tasks.push(task);
                         if (status === 'completed') {
                             tasksByOwner[ownerId].completedCount++;
@@ -402,61 +457,139 @@ END $$;
                         }
                     });
 
-                    data.push({
-                        meeting,
-                        owners: Object.values(tasksByOwner)
-                    });
+                    if (hasVisibleTasks) {
+                         data.push({
+                            meeting,
+                            owners: Object.values(tasksByOwner)
+                        });
+                    }
                 });
                 return data;
-            }, [meetings, tasks, attendees]);
+            }, [meetings, tasks, attendees, filterMeeting, filterOwner, filterStatus, filterDate]);
 
-            if (reportData.length === 0) {
-                return <div className="text-center py-12 text-gray-500">No tasks data available for reports.</div>;
-            }
+            // Clear Filters Handler
+            const clearFilters = () => {
+                setFilterMeeting('all');
+                setFilterOwner('all');
+                setFilterStatus('all');
+                setFilterDate('');
+            };
 
             return (
-                <div className="space-y-8">
-                    {reportData.map(({ meeting, owners }) => (
-                        <div key={meeting.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                            <div className="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
-                                <h3 className="font-bold text-gray-800 flex items-center">
-                                    <Icon name="Calendar" className="w-4 h-4 mr-2 text-indigo-600" />
-                                    {meeting.title}
-                                </h3>
-                                <span className="text-xs text-gray-500">{meeting.date}</span>
-                            </div>
-                            <div className="divide-y divide-gray-100">
-                                {owners.map(({ owner, tasks, pendingCount, completedCount }) => (
-                                    <div key={owner.email || owner.id} className="p-4">
-                                        <div className="flex items-center justify-between mb-3">
-                                            <div className="flex items-center space-x-2">
-                                                <UserAvatar user={owner} size="sm" />
-                                                <span className="text-sm font-semibold text-gray-800">{owner.name || owner.email}</span>
-                                            </div>
-                                            <div className="flex space-x-2 text-xs">
-                                                <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full font-medium">{pendingCount} Pending</span>
-                                                <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full font-medium">{completedCount} Completed</span>
-                                            </div>
-                                        </div>
-                                        <div className="pl-10 space-y-2">
-                                            {tasks.map(task => (
-                                                <div key={task.id} className="text-sm flex items-start justify-between border-l-2 border-gray-100 pl-3 py-1">
-                                                    <span className={`${(task.status || (task.done?'completed':'pending')) === 'completed' ? 'line-through text-gray-400' : 'text-gray-700'}`}>
-                                                        {task.text}
-                                                    </span>
-                                                    {task.obstacles && (
-                                                        <span className="ml-2 text-xs text-orange-600 bg-orange-50 px-2 py-0.5 rounded border border-orange-100 max-w-[200px] truncate" title={task.obstacles}>
-                                                            Obstacle: {task.obstacles}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
+                <div className="space-y-6">
+                    {/* FILTER BAR */}
+                    <div className="bg-white p-4 rounded-xl border border-gray-200 flex flex-wrap gap-4 items-end shadow-sm">
+                        <div className="flex flex-col gap-1 w-full sm:w-auto flex-1 min-w-[200px]">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Meeting</label>
+                            <select 
+                                value={filterMeeting} 
+                                onChange={(e) => setFilterMeeting(e.target.value)}
+                                className="text-sm border-gray-300 rounded-md shadow-sm border p-2 w-full focus:ring-2 focus:ring-indigo-500 outline-none"
+                            >
+                                <option value="all">All Meetings</option>
+                                {uniqueMeetings.map(m => (
+                                    <option key={m.id} value={m.id}>{m.title} ({m.date})</option>
                                 ))}
-                            </div>
+                            </select>
                         </div>
-                    ))}
+
+                        <div className="flex flex-col gap-1 w-full sm:w-auto flex-1 min-w-[150px]">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Owner</label>
+                            <select 
+                                value={filterOwner} 
+                                onChange={(e) => setFilterOwner(e.target.value)}
+                                className="text-sm border-gray-300 rounded-md shadow-sm border p-2 w-full focus:ring-2 focus:ring-indigo-500 outline-none"
+                            >
+                                <option value="all">All Owners</option>
+                                {uniqueOwners.map(u => (
+                                    <option key={u.id || u.email} value={u.id || u.email}>{u.name || u.email}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="flex flex-col gap-1 w-full sm:w-auto w-[120px]">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Status</label>
+                            <select 
+                                value={filterStatus} 
+                                onChange={(e) => setFilterStatus(e.target.value)}
+                                className="text-sm border-gray-300 rounded-md shadow-sm border p-2 w-full focus:ring-2 focus:ring-indigo-500 outline-none"
+                            >
+                                <option value="all">All</option>
+                                <option value="pending">Pending</option>
+                                <option value="completed">Completed</option>
+                            </select>
+                        </div>
+
+                         <div className="flex flex-col gap-1 w-full sm:w-auto">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Date</label>
+                            <input 
+                                type="date"
+                                value={filterDate}
+                                onChange={(e) => setFilterDate(e.target.value)}
+                                className="text-sm border-gray-300 rounded-md shadow-sm border p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
+                            />
+                        </div>
+
+                        <button 
+                            onClick={clearFilters}
+                            className="text-sm text-red-600 hover:bg-red-50 px-3 py-2 rounded-md transition-colors flex items-center mb-[1px]"
+                            title="Reset all filters"
+                        >
+                            <Icon name="XCircle" className="w-4 h-4 mr-1" />
+                            Clear
+                        </button>
+                    </div>
+
+                    {/* REPORT LIST */}
+                    {reportData.length === 0 ? (
+                        <div className="text-center py-12 text-gray-500 bg-white rounded-xl border border-dashed border-gray-300">
+                            No tasks found matching your filters.
+                        </div>
+                    ) : (
+                        <div className="space-y-8">
+                            {reportData.map(({ meeting, owners }) => (
+                                <div key={meeting.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                                    <div className="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+                                        <h3 className="font-bold text-gray-800 flex items-center">
+                                            <Icon name="Calendar" className="w-4 h-4 mr-2 text-indigo-600" />
+                                            {meeting.title}
+                                        </h3>
+                                        <span className="text-xs text-gray-500">{meeting.date}</span>
+                                    </div>
+                                    <div className="divide-y divide-gray-100">
+                                        {owners.map(({ owner, tasks, pendingCount, completedCount }) => (
+                                            <div key={owner.email || owner.id} className="p-4">
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <div className="flex items-center space-x-2">
+                                                        <UserAvatar user={owner} size="sm" />
+                                                        <span className="text-sm font-semibold text-gray-800">{owner.name || owner.email}</span>
+                                                    </div>
+                                                    <div className="flex space-x-2 text-xs">
+                                                        <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full font-medium">{pendingCount} Pending</span>
+                                                        <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full font-medium">{completedCount} Completed</span>
+                                                    </div>
+                                                </div>
+                                                <div className="pl-10 space-y-2">
+                                                    {tasks.map(task => (
+                                                        <div key={task.id} className="text-sm flex items-start justify-between border-l-2 border-gray-100 pl-3 py-1">
+                                                            <span className={`${(task.status || (task.done?'completed':'pending')) === 'completed' ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+                                                                {task.text}
+                                                            </span>
+                                                            {task.obstacles && (
+                                                                <span className="ml-2 text-xs text-orange-600 bg-orange-50 px-2 py-0.5 rounded border border-orange-100 max-w-[200px] truncate" title={task.obstacles}>
+                                                                    Obstacle: {task.obstacles}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             );
         };
@@ -646,7 +779,10 @@ END $$;
                                                                 <UserAvatar user={o} size="sm" />
                                                                 <div className="truncate flex-1">
                                                                     <p className="text-sm font-semibold text-gray-900 truncate">{o.name}</p>
-                                                                    <p className="text-xs text-gray-500 truncate">{o.email}</p>
+                                                                    <div className="flex items-center gap-1">
+                                                                        <p className="text-xs text-gray-500 truncate">{o.email}</p>
+                                                                        {o.system_role === 'admin' && <Icon name="Shield" className="w-3 h-3 text-blue-500" title="Admin User"/>}
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                             {/* Only show edit controls if they belong to this team or we are in Managers view */}
@@ -693,7 +829,10 @@ END $$;
                                                                 <UserAvatar user={m} size="xs" />
                                                                 <div className="truncate flex-1">
                                                                     <p className="text-sm text-gray-800 truncate">{m.name}</p>
-                                                                    <p className="text-[10px] text-gray-500 truncate">{m.email}</p>
+                                                                    <div className="flex items-center gap-1">
+                                                                        <p className="text-[10px] text-gray-500 truncate">{m.email}</p>
+                                                                        {m.system_role === 'admin' && <Icon name="Shield" className="w-3 h-3 text-blue-500" title="Admin User"/>}
+                                                                    </div>
                                                                 </div>
                                                                 <button onClick={() => onRemoveMember(m.email)} className="text-gray-400 hover:text-red-500 p-1" title="Remove">
                                                                     <Icon name="Trash2" className="w-3 h-3" />
@@ -1197,8 +1336,7 @@ END $$;
                         })) : [];
                         
                         // Force include current user (the owner of the calendar) in participants
-                        // We must ensure the current user is added so they can SEE the meeting later
-                        const userInAttendees = attendees.find(a => a.email && a.email.toLowerCase() === currentUser.email.toLowerCase());
+                        const userInAttendees = attendees.find(a => a.email === currentUser.email);
                         if (!userInAttendees) {
                             attendees.push({
                                 id: currentUser.id, // Use Supabase ID for me
@@ -1215,7 +1353,6 @@ END $$;
                             if (gDoc) gDocLink = gDoc.fileUrl;
                         }
 
-                        // Use upsert to merge participants if possible, but for now replace to ensure sync source of truth
                         await supabase.from('meetings').upsert({
                             id: mId,
                             title: event.summary || '(No Title)',
@@ -1229,6 +1366,8 @@ END $$;
                             platform: 'Google Calendar',
                             google_doc_link: gDocLink
                         });
+                        
+                        // Note: Notes syncing removed as requested
                     }
                     
                     await fetchData();
@@ -1307,31 +1446,6 @@ END $$;
                 }
             };
 
-            // --- STANDALONE TASK ADDITION ---
-            const handleAddStandaloneTask = (text) => {
-                if (!text.trim()) return;
-                const newId = `t_${Date.now()}`;
-                const newTask = {
-                    id: newId,
-                    meeting_id: 'standalone',
-                    text: text,
-                    assignee: currentUser.id, // Assign to self
-                    status: 'pending',
-                    start_date: getTodayISO(),
-                    end_date: getTodayISO()
-                };
-
-                // Optimistic
-                setTasks(prev => [newTask, ...prev]);
-                
-                if (dbStatus === 'connected') {
-                    supabase.from('tasks').insert(newTask).then(({error}) => {
-                        if(error) console.error("Error saving standalone task", error);
-                    });
-                }
-                setShowQuickAdd(false);
-            };
-
             // --- MEETING LIST LOGIC (All meetings, sorted by date) ---
             const sortedMeetings = useMemo(() => {
                 if (!currentUser) return [];
@@ -1364,16 +1478,13 @@ END $$;
                     });
                 });
 
-                // Filter by Selected Date - Only show selected date meetings
-                const dateFiltered = userMeetings.filter(m => m.date === selectedDate);
-                
-                // Sort Descending (Newest first)
-                return dateFiltered.sort((a, b) => {
+                // REMOVED date filter: Show all meetings sorted descending
+                return userMeetings.sort((a, b) => {
                     const dateA = new Date(a.date + ' ' + (a.time || '00:00'));
                     const dateB = new Date(b.date + ' ' + (b.time || '00:00'));
                     return dateB - dateA;
                 });
-            }, [meetings, currentUser, selectedDate]);
+            }, [meetings, currentUser]);
 
             // --- FILTER TASKS LOGIC ---
             const filteredTasks = useMemo(() => {
@@ -1461,7 +1572,7 @@ END $$;
                                             {dashboardViewMode === 'meetings' ? 'My Meetings' : (dashboardViewMode === 'tasks' ? 'My Tasks' : (dashboardViewMode === 'team' ? 'Team' : 'Reports'))}
                                         </h2>
                                         <p className="text-gray-500 text-sm mt-1">
-                                            {currentUser.name} {dashboardViewMode === 'meetings' && `• ${new Date(selectedDate).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}`}
+                                            {currentUser.name}
                                         </p>
                                     </div>
                                     <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
@@ -1476,18 +1587,7 @@ END $$;
                                              )}
                                         </div>
                                         
-                                        {/* Date Picker - Only for Meetings View */}
-                                        {dashboardViewMode === 'meetings' && (
-                                            <div className="relative w-full sm:w-auto">
-                                                <input
-                                                    type="date"
-                                                    value={selectedDate}
-                                                    onChange={(e) => setSelectedDate(e.target.value)}
-                                                    className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
-                                                />
-                                                <Icon name="Calendar" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
-                                            </div>
-                                        )}
+                                        {/* REMOVED DATE PICKER - Use list view instead */}
 
                                         {dashboardViewMode === 'tasks' && (
                                             <div className="flex gap-2 w-full sm:w-auto items-center">
@@ -1537,7 +1637,7 @@ END $$;
                                             </div>
                                         ) : (
                                             <div className="text-center py-20 bg-white rounded-xl border border-dashed">
-                                                <p className="text-gray-500">No meetings found for {selectedDate}.</p>
+                                                <p className="text-gray-500">No meetings found.</p>
                                                 {dbStatus === 'empty' && <p className="text-sm text-indigo-500 mt-2">Click "Sync" to load from Google.</p>}
                                             </div>
                                         )}
