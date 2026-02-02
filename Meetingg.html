@@ -115,7 +115,8 @@
                 FileText: <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z M14 3v5h5 M16 13H8 M16 17H8 M10 9H8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 PieChart: <path d="M21.21 15.89A10 10 0 1 1 8 2.83 M22 12A10 10 0 0 0 12 2v10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 Crown: <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
-                Briefcase: <path d="M20 7h-3a2 2 0 0 0-2-2h-6a2 2 0 0 0-2 2H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z M9 7V5h6v2 M12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                Briefcase: <path d="M20 7h-3a2 2 0 0 0-2-2h-6a2 2 0 0 0-2 2H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z M9 7V5h6v2 M12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
+                Hash: <path d="M4 9h16 M4 15h16 M10 3L8 21 M16 3l-2 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             };
             return (
                 <svg 
@@ -149,7 +150,7 @@ create table if not exists meetings (
     google_doc_link text
 );
 
--- 2. Tasks Table (Updated with status and obstacles)
+-- 2. Tasks Table
 create table if not exists tasks (
     id text primary key,
     meeting_id text,
@@ -160,16 +161,17 @@ create table if not exists tasks (
     obstacles text
 );
 
--- 3. Team Members Table (Updated with team and role)
+-- 3. Team Members Table (Updated with team, role, and managed_teams)
 create table if not exists team_members (
     email text primary key,
     name text,
     team text,
     role text,
+    managed_teams text[],
     created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- 4. Pending Emails Table (For Notifications)
+-- 4. Pending Emails Table
 create table if not exists pending_emails (
     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
     recipient_email text NOT NULL,
@@ -179,7 +181,7 @@ create table if not exists pending_emails (
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 5. Trigger for Email Notifications
+-- Email trigger
 CREATE OR REPLACE FUNCTION public.handle_new_task_assignment()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -211,7 +213,7 @@ CREATE TRIGGER on_task_created
     FOR EACH ROW
     EXECUTE FUNCTION public.handle_new_task_assignment();
 
--- Add columns if table already exists (for team_members)
+-- Add columns if table already exists
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'team_members' AND column_name = 'team') THEN
@@ -219,6 +221,9 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'team_members' AND column_name = 'role') THEN
         ALTER TABLE team_members ADD COLUMN role text;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'team_members' AND column_name = 'managed_teams') THEN
+        ALTER TABLE team_members ADD COLUMN managed_teams text[];
     END IF;
 END $$;
         `;
@@ -228,7 +233,6 @@ END $$;
         const UserAvatar = ({ user, size = 'md' }) => {
             const sizeClasses = { sm: 'w-6 h-6 text-xs', md: 'w-8 h-8 text-sm', lg: 'w-10 h-10 text-base' };
             if (!user) return null;
-            // Handle both simple strings and object users
             const name = user.name || user.email || 'Unknown';
             const initial = name.substring(0,2).toUpperCase();
             return (
@@ -461,7 +465,6 @@ END $$;
                 setNewName('');
             };
 
-            // Identify unassigned members from colleagues who are not in teamMembers or have no team set
             const unassigned = useMemo(() => {
                 return colleagues.filter(c => {
                     const existing = teamMembers.find(t => t.email === (c.email || c.id));
@@ -469,12 +472,22 @@ END $$;
                 });
             }, [colleagues, teamMembers]);
 
-            // For unassigned, we prefer using the teamMembers record if it exists (so we have up-to-date name/role if partially set)
-            // or the colleague record otherwise.
             const displayUnassigned = unassigned.map(c => {
                 const existing = teamMembers.find(t => t.email === (c.email || c.id));
                 return existing || c;
             });
+
+            // Handlers for managing teams for managers
+            const handleAddManagedTeam = (email, currentManaged, newTeam) => {
+                if (!newTeam || currentManaged.includes(newTeam)) return;
+                const updated = [...currentManaged, newTeam];
+                onUpdateMember(email, { managed_teams: updated });
+            };
+
+            const handleRemoveManagedTeam = (email, currentManaged, teamToRemove) => {
+                const updated = currentManaged.filter(t => t !== teamToRemove);
+                onUpdateMember(email, { managed_teams: updated });
+            };
 
             return (
                 <div className="space-y-6">
@@ -565,7 +578,14 @@ END $$;
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {DEPARTMENTS.map(team => {
                             const members = teamMembers.filter(m => m.team === team);
-                            const owners = members.filter(m => m.role === 'Owner');
+                            // Owners are: 
+                            // 1. Explicit 'Owner' role in this team
+                            // 2. OR members of 'Managers' who have this team in their managed_teams list
+                            const owners = teamMembers.filter(m => 
+                                (m.team === team && m.role === 'Owner') || 
+                                (m.team === 'Managers' && m.managed_teams && m.managed_teams.includes(team))
+                            );
+                            
                             const regularMembers = members.filter(m => m.role !== 'Owner');
 
                             return (
@@ -587,31 +607,38 @@ END $$;
                                                 </h4>
                                                 <div className="space-y-2">
                                                     {owners.map(o => (
-                                                        <div key={o.email} className="flex flex-col sm:flex-row items-center gap-2 bg-yellow-50 p-2 rounded-lg border border-yellow-100">
-                                                            <div className="flex items-center space-x-2 flex-1 w-full">
+                                                        <div key={o.email} className="flex flex-col items-start gap-2 bg-yellow-50 p-2 rounded-lg border border-yellow-100">
+                                                            <div className="flex items-center space-x-2 w-full">
                                                                 <UserAvatar user={o} size="sm" />
-                                                                <div className="truncate">
+                                                                <div className="truncate flex-1">
                                                                     <p className="text-sm font-semibold text-gray-900 truncate">{o.name}</p>
                                                                     <p className="text-xs text-gray-500 truncate">{o.email}</p>
                                                                 </div>
                                                             </div>
-                                                            <div className="flex gap-1 w-full sm:w-auto">
-                                                                <select 
-                                                                    value={o.team}
-                                                                    onChange={(e) => onUpdateMember(o.email, { team: e.target.value })}
-                                                                    className="text-[10px] border border-yellow-200 rounded p-1 bg-white focus:outline-none w-1/2 sm:w-auto"
-                                                                >
-                                                                    {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-                                                                </select>
-                                                                <select 
-                                                                    value={o.role}
-                                                                    onChange={(e) => onUpdateMember(o.email, { role: e.target.value })}
-                                                                    className="text-[10px] border border-yellow-200 rounded p-1 bg-white focus:outline-none w-1/2 sm:w-auto"
-                                                                >
-                                                                    <option value="Member">Member</option>
-                                                                    <option value="Owner">Owner</option>
-                                                                </select>
-                                                            </div>
+                                                            {/* Only show edit controls if they belong to this team or we are in Managers view */}
+                                                            {/* Actually, if they are Manager owners here, we don't edit them here, we edit them in Managers card */}
+                                                            {o.team === team && (
+                                                                <div className="flex gap-1 w-full">
+                                                                    <select 
+                                                                        value={o.team}
+                                                                        onChange={(e) => onUpdateMember(o.email, { team: e.target.value })}
+                                                                        className="text-[10px] border border-yellow-200 rounded p-1 bg-white focus:outline-none w-1/2"
+                                                                    >
+                                                                        {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                                                                    </select>
+                                                                    <select 
+                                                                        value={o.role}
+                                                                        onChange={(e) => onUpdateMember(o.email, { role: e.target.value })}
+                                                                        className="text-[10px] border border-yellow-200 rounded p-1 bg-white focus:outline-none w-1/2"
+                                                                    >
+                                                                        <option value="Member">Member</option>
+                                                                        <option value="Owner">Owner</option>
+                                                                    </select>
+                                                                </div>
+                                                            )}
+                                                            {o.team !== team && (
+                                                                <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1 rounded">Via Managers</span>
+                                                            )}
                                                         </div>
                                                     ))}
                                                 </div>
@@ -626,31 +653,55 @@ END $$;
                                                     <p className="text-sm text-gray-400 italic">No members yet.</p>
                                                 ) : (
                                                     regularMembers.map(m => (
-                                                        <div key={m.email} className="flex flex-col sm:flex-row items-center gap-2 p-1.5 hover:bg-gray-50 rounded-lg transition-colors border border-transparent hover:border-gray-100">
-                                                            <div className="flex items-center space-x-2 flex-1 w-full">
+                                                        <div key={m.email} className="flex flex-col gap-2 p-1.5 hover:bg-gray-50 rounded-lg transition-colors border border-transparent hover:border-gray-100">
+                                                            <div className="flex items-center space-x-2 w-full">
                                                                 <UserAvatar user={m} size="xs" />
-                                                                <div className="truncate">
+                                                                <div className="truncate flex-1">
                                                                     <p className="text-sm text-gray-800 truncate">{m.name}</p>
                                                                     <p className="text-[10px] text-gray-500 truncate">{m.email}</p>
                                                                 </div>
                                                             </div>
-                                                            <div className="flex gap-1 w-full sm:w-auto">
+                                                            
+                                                            <div className="flex gap-1 w-full">
                                                                 <select 
                                                                     value={m.team}
                                                                     onChange={(e) => onUpdateMember(m.email, { team: e.target.value })}
-                                                                    className="text-[10px] border-gray-200 rounded p-1 bg-white focus:outline-none w-1/2 sm:w-auto"
+                                                                    className="text-[10px] border-gray-200 rounded p-1 bg-white focus:outline-none w-1/2"
                                                                 >
                                                                     {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
                                                                 </select>
                                                                 <select 
                                                                     value={m.role}
                                                                     onChange={(e) => onUpdateMember(m.email, { role: e.target.value })}
-                                                                    className="text-[10px] border-gray-200 rounded p-1 bg-white focus:outline-none w-1/2 sm:w-auto"
+                                                                    className="text-[10px] border-gray-200 rounded p-1 bg-white focus:outline-none w-1/2"
                                                                 >
                                                                     <option value="Member">Member</option>
                                                                     <option value="Owner">Owner</option>
                                                                 </select>
                                                             </div>
+                                                            
+                                                            {/* MANAGERS SPECIAL UI: Managed Teams */}
+                                                            {m.team === 'Managers' && (
+                                                                <div className="w-full pt-1 border-t border-gray-100 mt-1">
+                                                                    <p className="text-[10px] font-bold text-gray-400 mb-1">Manages:</p>
+                                                                    <div className="flex flex-wrap gap-1 mb-1">
+                                                                        {(m.managed_teams || []).map(mt => (
+                                                                            <span key={mt} className="text-[9px] bg-green-50 text-green-700 border border-green-100 px-1 rounded flex items-center">
+                                                                                {mt}
+                                                                                <button onClick={() => handleRemoveManagedTeam(m.email, m.managed_teams, mt)} className="ml-1 hover:text-red-500">×</button>
+                                                                            </span>
+                                                                        ))}
+                                                                    </div>
+                                                                    <select 
+                                                                        value="" 
+                                                                        onChange={(e) => handleAddManagedTeam(m.email, m.managed_teams || [], e.target.value)}
+                                                                        className="text-[10px] w-full border border-gray-200 rounded bg-gray-50"
+                                                                    >
+                                                                        <option value="">+ Add Team</option>
+                                                                        {DEPARTMENTS.filter(d => d !== 'Managers').map(d => <option key={d} value={d}>{d}</option>)}
+                                                                    </select>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     ))
                                                 )}
