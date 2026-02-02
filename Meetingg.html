@@ -1035,7 +1035,7 @@ END $$;
                     options: { 
                         redirectTo: window.location.href,
                         // Request Calendar Access AND Event editing (for description sync)
-                        scopes: 'https://www.googleapis.com/auth/calendar' 
+                        scopes: 'https://www.googleapis.com/auth/calendar.readonly' 
                     } 
                 });
                 if (error) alert(error.message);
