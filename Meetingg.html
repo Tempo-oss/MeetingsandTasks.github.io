@@ -42,9 +42,6 @@
         body { font-family: 'Inter', sans-serif; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        .prose h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 1rem; color: #111827; }
-        .prose p { margin-bottom: 0.75rem; line-height: 1.6; color: #374151; }
-        .prose:focus { outline: none; }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-900 h-screen overflow-hidden">
@@ -80,6 +77,18 @@
             const d = new Date();
             const offset = d.getTimezoneOffset() * 60000;
             return new Date(d.getTime() - offset).toISOString().split('T')[0];
+        };
+
+        const calculateDaysRemaining = (endDate) => {
+            if (!endDate) return null;
+            const end = new Date(endDate);
+            const today = new Date();
+            end.setHours(0,0,0,0);
+            today.setHours(0,0,0,0);
+            
+            const diffTime = end - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            return diffDays;
         };
 
         const DEPARTMENTS = ['Managers', 'Leaders', 'Quality', 'Training', 'HR', 'Mentors', 'WFM', 'Eng team'];
@@ -161,7 +170,9 @@ create table if not exists tasks (
     assignee text,
     done boolean,
     status text default 'pending',
-    obstacles text
+    obstacles text,
+    start_date date,
+    end_date date
 );
 
 -- 3. Team Members Table (Updated with team, role, and managed_teams)
@@ -184,39 +195,6 @@ create table if not exists pending_emails (
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Email trigger
-CREATE OR REPLACE FUNCTION public.handle_new_task_assignment()
-RETURNS TRIGGER AS $$
-DECLARE
-    target_email text;
-    task_description text;
-BEGIN
-    IF NEW.assignee LIKE '%@%' THEN
-        target_email := NEW.assignee;
-    ELSIF NEW.assignee ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
-        SELECT email INTO target_email FROM auth.users WHERE id = NEW.assignee::uuid;
-    END IF;
-
-    IF target_email IS NOT NULL THEN
-        task_description := NEW.text;
-        INSERT INTO public.pending_emails (recipient_email, subject, body)
-        VALUES (
-            target_email,
-            'New Task Assigned in MeetingMate',
-            'You have been assigned a new task: "' || task_description || '"'
-        );
-    END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-DROP TRIGGER IF EXISTS on_task_created ON tasks;
-CREATE TRIGGER on_task_created
-    AFTER INSERT ON tasks
-    FOR EACH ROW
-    EXECUTE FUNCTION public.handle_new_task_assignment();
-
--- Add columns if table already exists
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'team_members' AND column_name = 'team') THEN
@@ -227,6 +205,12 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'team_members' AND column_name = 'managed_teams') THEN
         ALTER TABLE team_members ADD COLUMN managed_teams text[];
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tasks' AND column_name = 'start_date') THEN
+        ALTER TABLE tasks ADD COLUMN start_date date;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tasks' AND column_name = 'end_date') THEN
+        ALTER TABLE tasks ADD COLUMN end_date date;
     END IF;
 END $$;
         `;
@@ -322,6 +306,8 @@ END $$;
 
         const TaskCard = ({ task, meetingTitle, onStatusChange, onObstacleChange }) => {
             const currentStatus = task.status || (task.done ? 'completed' : 'pending');
+            const daysRemaining = calculateDaysRemaining(task.end_date);
+            const isOverdue = daysRemaining !== null && daysRemaining < 0 && currentStatus !== 'completed';
             
             return (
                 <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow">
@@ -343,10 +329,27 @@ END $$;
                             <p className={`text-sm font-medium text-gray-900 ${currentStatus === 'completed' ? 'line-through text-gray-500' : ''}`}>
                                 {task.text}
                             </p>
-                            <p className="text-xs text-gray-500 mt-1 flex items-center">
-                                <span className="bg-gray-100 px-2 py-0.5 rounded text-gray-600 truncate max-w-[200px]">From: {meetingTitle}</span>
-                                {task.assigneeName && <span className="ml-2 text-indigo-600">• Assigned to: {task.assigneeName}</span>}
-                            </p>
+                            <div className="flex flex-col sm:flex-row sm:items-center mt-1 text-xs text-gray-500 gap-1 sm:gap-3">
+                                <span>From: {meetingTitle}</span>
+                                {task.assigneeName && <span className="text-indigo-600">• Assigned to: {task.assigneeName}</span>}
+                                {task.start_date && <span>• Start: {task.start_date}</span>}
+                                {task.end_date && <span>• Due: {task.end_date}</span>}
+                            </div>
+                            
+                            {/* Deadline Counter */}
+                            {task.end_date && currentStatus !== 'completed' && (
+                                <div className="mt-1">
+                                    {isOverdue ? (
+                                        <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-100">
+                                            Overdue by {Math.abs(daysRemaining)} days
+                                        </span>
+                                    ) : (
+                                        <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full border border-green-100">
+                                            {daysRemaining} days left
+                                        </span>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                     
@@ -586,7 +589,14 @@ END $$;
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {DEPARTMENTS.map(team => {
                             const members = teamMembers.filter(m => m.team === team);
-                            const owners = members.filter(m => m.role === 'Owner');
+                            // Owners are: 
+                            // 1. Explicit 'Owner' role in this team
+                            // 2. OR members of 'Managers' who have this team in their managed_teams list
+                            const owners = teamMembers.filter(m => 
+                                (m.team === team && m.role === 'Owner') || 
+                                (m.team === 'Managers' && m.managed_teams && m.managed_teams.includes(team))
+                            );
+                            
                             const regularMembers = members.filter(m => m.role !== 'Owner');
 
                             return (
@@ -615,10 +625,9 @@ END $$;
                                                                     <p className="text-sm font-semibold text-gray-900 truncate">{o.name}</p>
                                                                     <p className="text-xs text-gray-500 truncate">{o.email}</p>
                                                                 </div>
-                                                                <button onClick={() => onRemoveMember(o.email)} className="text-gray-400 hover:text-red-500 p-1" title="Remove">
-                                                                    <Icon name="Trash2" className="w-3 h-3" />
-                                                                </button>
                                                             </div>
+                                                            {/* Only show edit controls if they belong to this team or we are in Managers view */}
+                                                            {/* Actually, if they are Manager owners here, we don't edit them here, we edit them in Managers card */}
                                                             {o.team === team && (
                                                                 <div className="flex gap-1 w-full">
                                                                     <select 
@@ -723,15 +732,17 @@ END $$;
             );
         };
 
-        const TaskManager = ({ tasks, attendees, onUpdateTask, onAdd, meetingId, currentUserId }) => {
+        const TaskManager = ({ tasks, attendees, onUpdateTask, onAdd, meetingId, currentUserId, teamMembers }) => {
             const [newTaskText, setNewTaskText] = useState('');
             const [assignee, setAssignee] = useState(currentUserId || '');
+            const [startDate, setStartDate] = useState(getTodayISO());
+            const [endDate, setEndDate] = useState(getTodayISO());
 
             const handleAdd = (e) => {
                 e.preventDefault();
                 if (!newTaskText.trim()) return;
                 const finalAssignee = assignee || currentUserId; 
-                onAdd(meetingId, newTaskText, finalAssignee);
+                onAdd(meetingId, newTaskText, finalAssignee, startDate, endDate);
                 setNewTaskText('');
             };
 
@@ -754,29 +765,54 @@ END $$;
                             Action Items
                         </h2>
                         
-                        <form onSubmit={handleAdd} className="mt-4 flex gap-2">
+                        <form onSubmit={handleAdd} className="mt-4 flex flex-col gap-2">
                             <input 
                                 type="text" 
                                 placeholder="New task description..." 
-                                className="flex-1 text-sm border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500 border p-2" 
+                                className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500 border p-2" 
                                 value={newTaskText} 
                                 onChange={(e) => setNewTaskText(e.target.value)} 
                             />
-                            <div className="w-48">
-                                <select 
-                                    className="w-full text-sm border-gray-300 rounded-md shadow-sm border p-2 bg-white" 
-                                    value={assignee} 
-                                    onChange={(e) => setAssignee(e.target.value)}
-                                >
-                                    <option value={currentUserId}>Me</option>
-                                    {attendees.map(u => (
-                                        <option key={u.email || u.id} value={u.email || u.id}>{u.name || u.email}</option>
-                                    ))}
-                                </select>
+                            <div className="flex gap-2">
+                                <div className="w-1/3">
+                                     <select 
+                                        className="w-full text-sm border-gray-300 rounded-md shadow-sm border p-2 bg-white" 
+                                        value={assignee} 
+                                        onChange={(e) => setAssignee(e.target.value)}
+                                    >
+                                        <option value={currentUserId}>Me</option>
+                                        {/* Consolidate all users: teamMembers + attendees */}
+                                        {(() => {
+                                            const uniqueUsers = new Map();
+                                            if (attendees) attendees.forEach(u => uniqueUsers.set(u.email || u.id, u));
+                                            if (teamMembers) teamMembers.forEach(u => uniqueUsers.set(u.email || u.id, u));
+                                            
+                                            return Array.from(uniqueUsers.values()).map(u => (
+                                                <option key={u.email || u.id} value={u.email || u.id}>{u.name || u.email}</option>
+                                            ));
+                                        })()}
+                                    </select>
+                                </div>
+                                <div className="flex-1 flex gap-2">
+                                    <input 
+                                        type="date" 
+                                        value={startDate} 
+                                        onChange={(e) => setStartDate(e.target.value)}
+                                        className="w-1/2 text-sm border p-2 rounded"
+                                        title="Start Date"
+                                    />
+                                    <input 
+                                        type="date" 
+                                        value={endDate} 
+                                        onChange={(e) => setEndDate(e.target.value)}
+                                        className="w-1/2 text-sm border p-2 rounded"
+                                        title="Due Date"
+                                    />
+                                </div>
+                                <button type="submit" disabled={!newTaskText.trim()} className="bg-indigo-600 text-white p-2 rounded-md hover:bg-indigo-700 disabled:opacity-50">
+                                    <Icon name="Plus" className="w-5 h-5" />
+                                </button>
                             </div>
-                            <button type="submit" disabled={!newTaskText.trim()} className="bg-indigo-600 text-white p-2 rounded-md hover:bg-indigo-700 disabled:opacity-50">
-                                <Icon name="Plus" className="w-5 h-5" />
-                            </button>
                         </form>
                     </div>
 
@@ -785,7 +821,10 @@ END $$;
                             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">To Do</h3>
                             {activeTasks.length === 0 && <p className="text-sm text-gray-400 italic">No open tasks.</p>}
                             {activeTasks.map(task => {
-                                const user = attendees.find(u => (u.email === task.assignee || u.id === task.assignee)) || { name: 'Unknown' };
+                                // Resolve assignee name from teamMembers primarily
+                                const user = (teamMembers || []).find(u => (u.email === task.assignee || u.id === task.assignee)) || 
+                                             (attendees || []).find(u => (u.email === task.assignee || u.id === task.assignee)) || 
+                                             { name: 'Unknown' };
                                 task.assigneeName = user.name || user.email; 
                                 return (
                                     <TaskCard 
@@ -990,7 +1029,6 @@ END $$;
             const handleRemoveTeamMember = async (email) => {
                 if (!confirm(`Are you sure you want to remove ${email}?`)) return;
                 
-                // Optimistic
                 setTeamMembers(prev => prev.filter(m => m.email !== email));
 
                 if (dbStatus === 'connected') {
@@ -1262,7 +1300,6 @@ END $$;
 
             if (!session) return <LoginScreen onLogin={handleGoogleLogin} onEmailLogin={handleEmailLogin} />;
 
-            // --- Dashboard View ---
             if (view === 'dashboard') {
                 return (
                     <div className="flex flex-col h-screen bg-gray-50">
@@ -1350,6 +1387,10 @@ END $$;
                                         {filteredTasks.length > 0 ? (
                                             filteredTasks.map(t => {
                                                 const mtg = meetings.find(m => m.id === t.meetingId);
+                                                // Resolve user from all colleagues
+                                                const user = allPossibleAssignees.find(c => c.email === t.assignee || c.id === t.assignee) || { name: 'Unknown' };
+                                                t.assigneeName = user.name || user.email;
+
                                                 return (
                                                     <TaskCard 
                                                         key={t.id} 
@@ -1376,7 +1417,7 @@ END $$;
                                     />
                                 ) : (
                                     /* Reports View */
-                                    <ReportsView meetings={meetings} tasks={tasks} attendees={colleagues} />
+                                    <ReportsView meetings={meetings} tasks={tasks} attendees={allPossibleAssignees} />
                                 )}
                             </div>
                         </main>
@@ -1397,7 +1438,6 @@ END $$;
                         title={m.title}
                     />
                     <div className="flex-1 overflow-hidden flex flex-col">
-                        {/* Task Manager now takes full width since Notes are removed */}
                         <TaskManager 
                             tasks={tasks.filter(t => t.meetingId === m.id)}
                             attendees={allPossibleAssignees}
@@ -1411,6 +1451,7 @@ END $$;
                                 }
                             }}
                             meetingId={m.id}
+                            teamMembers={teamMembers} // Pass teamMembers for proper role resolution inside TaskManager
                         />
                     </div>
                 </div>
