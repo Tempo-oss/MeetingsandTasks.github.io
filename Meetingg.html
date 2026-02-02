@@ -42,9 +42,6 @@
         body { font-family: 'Inter', sans-serif; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        .prose h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 1rem; color: #111827; }
-        .prose p { margin-bottom: 0.75rem; line-height: 1.6; color: #374151; }
-        .prose:focus { outline: none; }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-900 h-screen overflow-hidden">
@@ -112,7 +109,7 @@
                 Trash2: <path d="M3 6h18 M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6 M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2 M10 11v6 M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 AlertCircle: <path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm-1-9h2m-2 4h2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 CheckSquare: <path d="m9 11 3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
-                FileText: <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z M14 3v5h5 M16 13H8 M16 17H8 M10 9H8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
+                FileText: <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z M14 2v6h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 Bold: <path d="M14 12a4 4 0 0 0 0-8H6v8 M15 20a4 4 0 0 0 0-8H6v8Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 Italic: <path d="M19 4h-9M14 20H5M15 4L9 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 Underline: <path d="M6 4v6a6 6 0 0 0 12 0V4 M4 20h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
@@ -127,6 +124,7 @@
                 Mail: <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z M22 6l-10 7L2 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 UserPlus: <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2 M8.5 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z M20 8v6M23 11h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 AlertTriangle: <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z M12 9v4 M12 17h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
+                FileText: <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z M14 3v5h5 M16 13H8 M16 17H8 M10 9H8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 PieChart: <path d="M21.21 15.89A10 10 0 1 1 8 2.83 M22 12A10 10 0 0 0 12 2v10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 Crown: <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 Briefcase: <path d="M20 7h-3a2 2 0 0 0-2-2h-6a2 2 0 0 0-2 2H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z M9 7V5h6v2 M12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
@@ -957,6 +955,7 @@ END $$;
                         setCurrentUser({
                             id: session.user.id,
                             name: session.user.user_metadata.full_name || session.user.email,
+                            email: session.user.email, // Explicitly set email
                             role: 'Owner',
                             avatar: (session.user.user_metadata.full_name || 'U').substring(0, 2).toUpperCase(),
                             color: 'bg-indigo-600'
@@ -974,6 +973,7 @@ END $$;
                          setCurrentUser({
                             id: session.user.id,
                             name: session.user.user_metadata.full_name || session.user.email,
+                            email: session.user.email, // Explicitly set email
                             role: 'Owner',
                             avatar: (session.user.user_metadata.full_name || 'U').substring(0, 2).toUpperCase(),
                             color: 'bg-indigo-600'
@@ -1150,8 +1150,8 @@ END $$;
                                     id: taskId,
                                     meeting_id: mId,
                                     text: taskText,
-                                    assignee: currentUser.id,
-                                    status: 'pending' // Default status
+                                    assignee: currentUser.id, // Assign to self initially
+                                    status: 'pending' 
                                 }, { ignoreDuplicates: true });
                             }
                         }
@@ -1162,9 +1162,18 @@ END $$;
                             email: a.email,
                             name: a.displayName || a.email.split('@')[0],
                             avatar: (a.displayName || a.email).substring(0,2).toUpperCase()
-                        })) : [{
-                            id: currentUser.id, name: currentUser.name, email: currentUser.email
-                        }];
+                        })) : [];
+                        
+                        // Force include current user (the owner of the calendar) in participants
+                        const userInAttendees = attendees.find(a => a.email === currentUser.email);
+                        if (!userInAttendees) {
+                            attendees.push({
+                                id: currentUser.id, // Use Supabase ID for me
+                                email: currentUser.email,
+                                name: currentUser.name,
+                                avatar: currentUser.avatar
+                            });
+                        }
 
                         // Check for Google Doc Attachment
                         let gDocLink = null;
@@ -1265,18 +1274,27 @@ END $$;
                 }
             };
 
-            const myMeetings = meetings.filter(m => {
-                if (!currentUser) return false;
-                // Strict participant check: Must be in the list by ID or Email
-                const parts = m.participants || [];
-                const isParticipant = parts.some(p => {
-                    const pId = typeof p === 'object' ? (p.id || p.email) : p;
-                    // Check against current user ID and Email
-                    return pId === currentUser.id || pId === currentUser.email;
+            // --- MEETING LIST LOGIC (All meetings, sorted by date) ---
+            const sortedMeetings = useMemo(() => {
+                if (!currentUser) return [];
+                
+                // Filter by participant (strict check on email or ID)
+                const userMeetings = meetings.filter(m => {
+                    const parts = m.participants || [];
+                    return parts.some(p => {
+                        const pId = typeof p === 'object' ? (p.id || p.email) : p;
+                        return pId === currentUser.id || pId === currentUser.email;
+                    });
                 });
-                const isDateMatch = m.date === selectedDate;
-                return isParticipant && isDateMatch;
-            });
+
+                // Sort Descending (Newest first)
+                return userMeetings.sort((a, b) => {
+                    // Combine date and time for accurate sort
+                    const dateA = new Date(a.date + ' ' + (a.time || '00:00'));
+                    const dateB = new Date(b.date + ' ' + (b.time || '00:00'));
+                    return dateB - dateA;
+                });
+            }, [meetings, currentUser]);
 
             // --- FILTER TASKS LOGIC ---
             const filteredTasks = useMemo(() => {
@@ -1367,7 +1385,7 @@ END $$;
                                             {dashboardViewMode === 'meetings' ? 'My Meetings' : (dashboardViewMode === 'tasks' ? 'My Tasks' : (dashboardViewMode === 'team' ? 'Team' : 'Reports'))}
                                         </h2>
                                         <p className="text-gray-500 text-sm mt-1">
-                                            {currentUser.name} {dashboardViewMode === 'meetings' && `• ${new Date(selectedDate).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}`}
+                                            {currentUser.name}
                                         </p>
                                     </div>
                                     <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
@@ -1378,17 +1396,7 @@ END $$;
                                              <button onClick={() => setDashboardViewMode('reports')} className={`flex-1 sm:flex-none px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${dashboardViewMode === 'reports' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:bg-gray-50'}`}>Reports</button>
                                         </div>
                                         
-                                        {dashboardViewMode === 'meetings' && (
-                                            <div className="relative w-full sm:w-auto">
-                                                <input
-                                                    type="date"
-                                                    value={selectedDate}
-                                                    onChange={(e) => setSelectedDate(e.target.value)}
-                                                    className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
-                                                />
-                                                <Icon name="Calendar" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
-                                            </div>
-                                        )}
+                                        {/* REMOVED DATE PICKER - Use list view instead */}
 
                                         {dashboardViewMode === 'tasks' && (
                                             <div className="flex gap-2 w-full sm:w-auto">
@@ -1421,13 +1429,14 @@ END $$;
 
                                 {dashboardViewMode === 'meetings' ? (
                                     <>
-                                        {myMeetings.length > 0 ? (
+                                        {sortedMeetings.length > 0 ? (
                                             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                                {myMeetings.map(m => <MeetingCard key={m.id} meeting={m} onClick={() => { setSelectedMeetingId(m.id); setView('meeting'); }} />)}
+                                                {/* Group or just list. Simple list for now */}
+                                                {sortedMeetings.map(m => <MeetingCard key={m.id} meeting={m} onClick={() => { setSelectedMeetingId(m.id); setView('meeting'); }} />)}
                                             </div>
                                         ) : (
                                             <div className="text-center py-20 bg-white rounded-xl border border-dashed">
-                                                <p className="text-gray-500">No meetings found for {selectedDate}.</p>
+                                                <p className="text-gray-500">No meetings found.</p>
                                                 {dbStatus === 'empty' && <p className="text-sm text-indigo-500 mt-2">Click "Sync" to load from Google.</p>}
                                             </div>
                                         )}
@@ -1489,7 +1498,6 @@ END $$;
                         title={m.title}
                     />
                     <div className="flex-1 overflow-hidden flex flex-col">
-                        {/* Task Manager now takes full width since Notes are removed */}
                         <TaskManager 
                             tasks={tasks.filter(t => t.meetingId === m.id)}
                             attendees={allPossibleAssignees}
