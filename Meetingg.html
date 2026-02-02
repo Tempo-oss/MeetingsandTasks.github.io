@@ -79,6 +79,8 @@
             return new Date(d.getTime() - offset).toISOString().split('T')[0];
         };
 
+        const DEPARTMENTS = ['Managers', 'Leaders', 'Quality', 'Training', 'HR', 'Mentors'];
+
         // --- Icons ---
         const Icon = ({ name, className, ...props }) => {
             const icons = {
@@ -111,7 +113,9 @@
                 UserPlus: <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2 M8.5 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z M20 8v6M23 11h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 AlertTriangle: <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z M12 9v4 M12 17h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
                 FileText: <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z M14 3v5h5 M16 13H8 M16 17H8 M10 9H8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
-                PieChart: <path d="M21.21 15.89A10 10 0 1 1 8 2.83 M22 12A10 10 0 0 0 12 2v10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                PieChart: <path d="M21.21 15.89A10 10 0 1 1 8 2.83 M22 12A10 10 0 0 0 12 2v10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
+                Crown: <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>,
+                Briefcase: <path d="M20 7h-3a2 2 0 0 0-2-2h-6a2 2 0 0 0-2 2H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z M9 7V5h6v2 M12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             };
             return (
                 <svg 
@@ -156,54 +160,25 @@ create table if not exists tasks (
     obstacles text
 );
 
--- 3. Team Members Table
+-- 3. Team Members Table (Updated with team and role)
 create table if not exists team_members (
     email text primary key,
     name text,
+    team text,
+    role text,
     created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- 4. Pending Emails Table (For Notifications)
-create table if not exists pending_emails (
-    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-    recipient_email text NOT NULL,
-    subject text NOT NULL,
-    body text NOT NULL,
-    status text DEFAULT 'pending',
-    created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- 5. Trigger for Email Notifications
-CREATE OR REPLACE FUNCTION public.handle_new_task_assignment()
-RETURNS TRIGGER AS $$
-DECLARE
-    target_email text;
-    task_description text;
+-- Add columns if table already exists
+DO $$
 BEGIN
-    IF NEW.assignee LIKE '%@%' THEN
-        target_email := NEW.assignee;
-    ELSIF NEW.assignee ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
-        SELECT email INTO target_email FROM auth.users WHERE id = NEW.assignee::uuid;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'team_members' AND column_name = 'team') THEN
+        ALTER TABLE team_members ADD COLUMN team text;
     END IF;
-
-    IF target_email IS NOT NULL THEN
-        task_description := NEW.text;
-        INSERT INTO public.pending_emails (recipient_email, subject, body)
-        VALUES (
-            target_email,
-            'New Task Assigned in MeetingMate',
-            'You have been assigned a new task: "' || task_description || '"'
-        );
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'team_members' AND column_name = 'role') THEN
+        ALTER TABLE team_members ADD COLUMN role text;
     END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-DROP TRIGGER IF EXISTS on_task_created ON tasks;
-CREATE TRIGGER on_task_created
-    AFTER INSERT ON tasks
-    FOR EACH ROW
-    EXECUTE FUNCTION public.handle_new_task_assignment();
+END $$;
         `;
 
         // --- Components ---
@@ -344,14 +319,12 @@ CREATE TRIGGER on_task_created
         };
 
         const ReportsView = ({ meetings, tasks, attendees }) => {
-            // Group tasks by meeting, then by owner
             const reportData = useMemo(() => {
                 const data = [];
                 meetings.forEach(meeting => {
                     const meetingTasks = tasks.filter(t => t.meetingId === meeting.id);
                     if (meetingTasks.length === 0) return;
 
-                    // Group by assignee
                     const tasksByOwner = {};
                     meetingTasks.forEach(task => {
                         const ownerId = task.assignee || 'Unassigned';
@@ -435,11 +408,13 @@ CREATE TRIGGER on_task_created
         const TeamList = ({ teamMembers, onAddMember }) => {
             const [newEmail, setNewEmail] = useState('');
             const [newName, setNewName] = useState('');
+            const [newTeam, setNewTeam] = useState(DEPARTMENTS[0]);
+            const [newRole, setNewRole] = useState('Member');
 
             const handleSubmit = (e) => {
                 e.preventDefault();
                 if (!newEmail || !newName) return;
-                onAddMember(newEmail, newName);
+                onAddMember(newEmail, newName, newTeam, newRole);
                 setNewEmail('');
                 setNewName('');
             };
@@ -451,7 +426,7 @@ CREATE TRIGGER on_task_created
                             <Icon name="UserPlus" className="w-5 h-5 mr-2 text-indigo-600" />
                             Add Team Member
                         </h3>
-                        <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-4">
+                        <form onSubmit={handleSubmit} className="flex flex-col md:flex-row gap-4">
                             <input
                                 type="text"
                                 placeholder="Name"
@@ -466,33 +441,87 @@ CREATE TRIGGER on_task_created
                                 onChange={(e) => setNewEmail(e.target.value)}
                                 className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
                             />
+                            <select 
+                                value={newTeam} 
+                                onChange={(e) => setNewTeam(e.target.value)}
+                                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                            >
+                                {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                            </select>
+                            <select 
+                                value={newRole} 
+                                onChange={(e) => setNewRole(e.target.value)}
+                                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                            >
+                                <option value="Member">Member</option>
+                                <option value="Owner">Owner</option>
+                            </select>
                             <button type="submit" className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition-colors font-medium">
                                 Add
                             </button>
                         </form>
                     </div>
 
-                    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                        <div className="p-4 border-b border-gray-100 bg-gray-50">
-                            <h3 className="font-bold text-gray-700">Team Directory</h3>
-                        </div>
-                        <div className="divide-y divide-gray-100">
-                            {teamMembers.length === 0 ? (
-                                <div className="p-8 text-center text-gray-500 italic">No team members added yet.</div>
-                            ) : (
-                                teamMembers.map(member => (
-                                    <div key={member.email} className="p-4 flex items-center justify-between hover:bg-gray-50">
-                                        <div className="flex items-center space-x-3">
-                                            <UserAvatar user={member} />
-                                            <div>
-                                                <p className="font-medium text-gray-900">{member.name}</p>
-                                                <p className="text-sm text-gray-500">{member.email}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {DEPARTMENTS.map(team => {
+                            const members = teamMembers.filter(m => m.team === team);
+                            const owners = members.filter(m => m.role === 'Owner');
+                            const regularMembers = members.filter(m => m.role !== 'Owner');
+
+                            return (
+                                <div key={team} className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm flex flex-col">
+                                    <div className="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+                                        <h3 className="font-bold text-gray-800 flex items-center">
+                                            <Icon name="Briefcase" className="w-4 h-4 mr-2 text-indigo-600" />
+                                            {team}
+                                        </h3>
+                                        <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{members.length}</span>
+                                    </div>
+                                    <div className="p-4 space-y-4 flex-1">
+                                        {/* Owners Section */}
+                                        {owners.length > 0 && (
+                                            <div className="mb-4">
+                                                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center">
+                                                    <Icon name="Crown" className="w-3 h-3 mr-1 text-yellow-500" />
+                                                    Team Owner
+                                                </h4>
+                                                <div className="space-y-2">
+                                                    {owners.map(o => (
+                                                        <div key={o.email} className="flex items-center space-x-2 bg-yellow-50 p-2 rounded-lg border border-yellow-100">
+                                                            <UserAvatar user={o} size="sm" />
+                                                            <div>
+                                                                <p className="text-sm font-semibold text-gray-900">{o.name}</p>
+                                                                <p className="text-xs text-gray-500">{o.email}</p>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Members Section */}
+                                        <div>
+                                            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Members</h4>
+                                            <div className="space-y-2">
+                                                {regularMembers.length === 0 ? (
+                                                    <p className="text-sm text-gray-400 italic">No members yet.</p>
+                                                ) : (
+                                                    regularMembers.map(m => (
+                                                        <div key={m.email} className="flex items-center space-x-2 p-1.5 hover:bg-gray-50 rounded-lg transition-colors">
+                                                            <UserAvatar user={m} size="xs" />
+                                                            <div className="truncate">
+                                                                <p className="text-sm text-gray-800 truncate">{m.name}</p>
+                                                                <p className="text-[10px] text-gray-500 truncate">{m.email}</p>
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                )}
                                             </div>
                                         </div>
                                     </div>
-                                ))
-                            )}
-                        </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             );
@@ -561,12 +590,12 @@ CREATE TRIGGER on_task_created
                             {activeTasks.length === 0 && <p className="text-sm text-gray-400 italic">No open tasks.</p>}
                             {activeTasks.map(task => {
                                 const user = attendees.find(u => (u.email === task.assignee || u.id === task.assignee)) || { name: 'Unknown' };
-                                task.assigneeName = user.name || user.email; // Attach for display
+                                task.assigneeName = user.name || user.email; 
                                 return (
                                     <TaskCard 
                                         key={task.id} 
                                         task={task} 
-                                        meetingTitle="" // Context is obvious in meeting view
+                                        meetingTitle="" 
                                         onStatusChange={handleStatusChange}
                                         onObstacleChange={handleObstacleChange}
                                     />
@@ -924,7 +953,7 @@ CREATE TRIGGER on_task_created
                 }
             };
 
-            const handleAddTeamMember = async (email, name) => {
+            const handleAddTeamMember = async (email, name, team, role) => {
                 if (!email.endsWith('@tempo.fit')) {
                     alert('Invalid email domain. Must be @tempo.fit');
                     return;
@@ -933,7 +962,9 @@ CREATE TRIGGER on_task_created
                 try {
                     const { error } = await supabase.from('team_members').insert({
                         email, 
-                        name
+                        name,
+                        team,
+                        role
                     });
                     
                     if (error) throw error;
@@ -1083,8 +1114,8 @@ CREATE TRIGGER on_task_created
                                                         key={t.id} 
                                                         task={t} 
                                                         meetingTitle={mtg ? mtg.title : 'Unknown Meeting'} 
-                                                        onStatusChange={(id, val) => handleUpdateTask(id, { status: val, done: val === 'completed' })}
-                                                        onObstacleChange={(id, val) => handleUpdateTask(id, { obstacles: val })}
+                                                        onStatusChange={handleUpdateTask} 
+                                                        onObstacleChange={handleUpdateTask}
                                                     />
                                                 );
                                             })
