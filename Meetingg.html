@@ -785,8 +785,6 @@ END $$;
                                                                     </div>
                                                                 </div>
                                                             </div>
-                                                            {/* Only show edit controls if they belong to this team or we are in Managers view */}
-                                                            {/* Actually, if they are Manager owners here, we don't edit them here, we edit them in Managers card */}
                                                             {o.team === team && (
                                                                 <div className="flex gap-1 w-full">
                                                                     <select 
@@ -1446,6 +1444,31 @@ END $$;
                 }
             };
 
+            // --- STANDALONE TASK ADDITION ---
+            const handleAddStandaloneTask = (text) => {
+                if (!text.trim()) return;
+                const newId = `t_${Date.now()}`;
+                const newTask = {
+                    id: newId,
+                    meeting_id: 'standalone',
+                    text: text,
+                    assignee: currentUser.id, // Assign to self
+                    status: 'pending',
+                    start_date: getTodayISO(),
+                    end_date: getTodayISO()
+                };
+
+                // Optimistic
+                setTasks(prev => [newTask, ...prev]);
+                
+                if (dbStatus === 'connected') {
+                    supabase.from('tasks').insert(newTask).then(({error}) => {
+                        if(error) console.error("Error saving standalone task", error);
+                    });
+                }
+                setShowQuickAdd(false);
+            };
+
             // --- MEETING LIST LOGIC (All meetings, sorted by date) ---
             const sortedMeetings = useMemo(() => {
                 if (!currentUser) return [];
@@ -1478,13 +1501,18 @@ END $$;
                     });
                 });
 
-                // REMOVED date filter: Show all meetings sorted descending
-                return userMeetings.sort((a, b) => {
+                // Filter by Selected Date IF selected (and if it's not empty)
+                const dateFiltered = selectedDate 
+                    ? userMeetings.filter(m => m.date === selectedDate)
+                    : userMeetings;
+                
+                // Sort Descending (Newest first)
+                return dateFiltered.sort((a, b) => {
                     const dateA = new Date(a.date + ' ' + (a.time || '00:00'));
                     const dateB = new Date(b.date + ' ' + (b.time || '00:00'));
                     return dateB - dateA;
                 });
-            }, [meetings, currentUser]);
+            }, [meetings, currentUser, selectedDate]);
 
             // --- FILTER TASKS LOGIC ---
             const filteredTasks = useMemo(() => {
@@ -1587,7 +1615,28 @@ END $$;
                                              )}
                                         </div>
                                         
-                                        {/* REMOVED DATE PICKER - Use list view instead */}
+                                        {/* Date Picker - With Show All Toggle */}
+                                        {dashboardViewMode === 'meetings' && (
+                                            <div className="flex items-center gap-2">
+                                                <div className="relative w-full sm:w-auto">
+                                                    <input
+                                                        type="date"
+                                                        value={selectedDate}
+                                                        onChange={(e) => setSelectedDate(e.target.value)}
+                                                        className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+                                                    />
+                                                    <Icon name="Calendar" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+                                                </div>
+                                                {selectedDate && (
+                                                    <button 
+                                                        onClick={() => setSelectedDate('')}
+                                                        className="text-xs text-indigo-600 hover:text-indigo-800 underline whitespace-nowrap"
+                                                    >
+                                                        Show All
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
 
                                         {dashboardViewMode === 'tasks' && (
                                             <div className="flex gap-2 w-full sm:w-auto items-center">
@@ -1637,7 +1686,7 @@ END $$;
                                             </div>
                                         ) : (
                                             <div className="text-center py-20 bg-white rounded-xl border border-dashed">
-                                                <p className="text-gray-500">No meetings found.</p>
+                                                <p className="text-gray-500">No meetings found {selectedDate ? `for ${selectedDate}` : ''}.</p>
                                                 {dbStatus === 'empty' && <p className="text-sm text-indigo-500 mt-2">Click "Sync" to load from Google.</p>}
                                             </div>
                                         )}
