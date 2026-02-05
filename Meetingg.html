@@ -952,30 +952,109 @@ create table if not exists pending_emails (
             const handleImportFromDoc = async (meeting) => {
                 if (!session?.provider_token) { alert("Missing Google Token. Please re-login."); return; }
                 if (!meeting.google_doc_link) { alert("No Google Doc linked to this meeting."); return; }
+                
                 const match = meeting.google_doc_link.match(/\/d\/([a-zA-Z0-9-_]+)/);
                 if (!match) { alert("Invalid Google Doc Link."); return; }
                 const docId = match[1];
+
                 setIsSyncing(true);
                 try {
-                    const resp = await fetch(`https://docs.googleapis.com/v1/documents/${docId}`, { headers: { Authorization: `Bearer ${session.provider_token}` } });
-                    if (!resp.ok) { const err = await resp.json(); throw new Error(err.error?.message || "Failed to fetch Doc"); }
-                    const docData = await resp.json();
-                    let fullText = '';
-                    if (docData.body && docData.body.content) { docData.body.content.forEach(elem => { if (elem.paragraph) { elem.paragraph.elements.forEach(pElem => { if (pElem.textRun) { fullText += pElem.textRun.content; } }); } }); }
-                    const taskRegex = /(?:^|\n)(?:-? ?\[ ?\]|TODO:|Task:)\s*(.+)/gi;
-                    let foundCount = 0;
-                    let m;
-                    while ((m = taskRegex.exec(fullText)) !== null) {
-                        const taskText = m[1].trim();
-                        if (taskText) {
-                            const taskId = `t_doc_${Date.now()}_${Math.floor(Math.random()*1000)}`;
-                            setTasks(prev => [...prev, { id: taskId, meetingId: meeting.id, text: taskText, assignee: currentUser.id, status: 'pending', start_date: getTodayISO(), end_date: getTodayISO() }]);
-                            if (client) { await client.from('tasks').insert({ id: taskId, meeting_id: meeting.id, text: taskText, assignee: currentUser.id, status: 'pending', start_date: getTodayISO(), end_date: getTodayISO() }); }
-                            foundCount++;
-                        }
+                    const resp = await fetch(`https://docs.googleapis.com/v1/documents/${docId}`, {
+                        headers: { Authorization: `Bearer ${session.provider_token}` }
+                    });
+                    
+                    if (!resp.ok) {
+                         const err = await resp.json();
+                         throw new Error(err.error?.message || "Failed to fetch Doc");
                     }
-                    alert(`Imported ${foundCount} tasks from Doc!`);
-                } catch (e) { console.error(e); alert("Import failed: " + e.message); } finally { setIsSyncing(false); }
+                    
+                    const docData = await resp.json();
+                    let tasksFound = [];
+                    
+                    // Helper to find user by name mentioned in text
+                    const findUserInText = (text) => {
+                        const lowerText = text.toLowerCase();
+                        // Search in teamMembers and attendees
+                        const allUsers = [...teamMembers, ...((meeting.participants || []).map(p => typeof p === 'string' ? {name:p, id:p} : p))];
+                        
+                        for (const u of allUsers) {
+                            if (u.name && lowerText.includes('@' + u.name.toLowerCase())) return u.id || u.email;
+                            if (u.name && lowerText.includes('(' + u.name.toLowerCase() + ')')) return u.id || u.email;
+                        }
+                        return currentUser.id; // Default to me
+                    };
+
+                    if (docData.body && docData.body.content) {
+                        docData.body.content.forEach(elem => {
+                            if (elem.paragraph) {
+                                let paraText = '';
+                                elem.paragraph.elements.forEach(pElem => {
+                                    if (pElem.textRun) {
+                                        paraText += pElem.textRun.content;
+                                    }
+                                });
+                                paraText = paraText.trim();
+                                
+                                // Heuristics for a task:
+                                // 1. Starts with TODO, Task, or [ ]
+                                // 2. Is a Checklist item (bullet with glyphType CHECKBOX - though API detail varies, simple bullet check helps)
+                                // 3. Or just simple bullet logic if requested
+                                
+                                const isTaskKeyword = /^(?:-? ?\[ ?\]|TODO:|Task:)/i.test(paraText);
+                                const isBullet = !!elem.paragraph.bullet;
+                                
+                                if (isTaskKeyword || (isBullet && paraText.length > 3)) {
+                                    // It's a task candidate
+                                    let cleanText = paraText.replace(/^(?:-? ?\[ ?\]|TODO:|Task:)\s*/i, '').trim();
+                                    if (cleanText) {
+                                        const assignedTo = findUserInText(cleanText);
+                                        tasksFound.push({ text: cleanText, assignee: assignedTo });
+                                    }
+                                }
+                            }
+                        });
+                    }
+
+                    if (tasksFound.length === 0) {
+                        alert("No tasks found in Doc. \nTip: Use 'TODO:', 'Task:', or checkboxes.");
+                    } else {
+                        let createdCount = 0;
+                        for (const task of tasksFound) {
+                             const taskId = `t_doc_${Date.now()}_${Math.floor(Math.random()*10000)}`;
+                             
+                             // Optimistic update
+                             setTasks(prev => [...prev, { 
+                                id: taskId, 
+                                meetingId: meeting.id, 
+                                text: task.text, 
+                                assignee: task.assignee, 
+                                status: 'pending',
+                                start_date: getTodayISO(),
+                                end_date: getTodayISO()
+                             }]);
+
+                             if (client) {
+                                 await client.from('tasks').insert({ 
+                                    id: taskId, 
+                                    meeting_id: meeting.id, 
+                                    text: task.text, 
+                                    assignee: task.assignee, 
+                                    status: 'pending',
+                                    start_date: getTodayISO(),
+                                    end_date: getTodayISO()
+                                });
+                             }
+                             createdCount++;
+                        }
+                        alert(`Imported ${createdCount} tasks!`);
+                    }
+
+                } catch (e) {
+                    console.error(e);
+                    alert("Import failed: " + e.message);
+                } finally {
+                    setIsSyncing(false);
+                }
             };
 
             const handleAddTeamMember = async (email, name, team, role, systemRole) => {
