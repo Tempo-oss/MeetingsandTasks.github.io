@@ -1064,16 +1064,29 @@ create table if not exists pending_emails (
                          if (meInTeam.role === 'Owner' && meInTeam.team) myManagedTeams.push(meInTeam.team);
                          if (meInTeam.managed_teams) myManagedTeams.push(...meInTeam.managed_teams);
                     }
-                    // Removed: if (currentUser.system_role === 'admin') myManagedTeams.push(...DEPARTMENTS);
-                    const teamMemberIds = teamMembers.filter(tm => myManagedTeams.includes(tm.team)).flatMap(tm => [tm.email, tm.email ? tm.email.toLowerCase() : null, tm.id]).filter(Boolean);
+                    
+                    // REMOVED Admin Override: strictly show managed teams only
+                    // if (currentUser.system_role === 'admin') myManagedTeams.push(...DEPARTMENTS);
+                    
+                    const teamMemberIds = teamMembers
+                        .filter(tm => myManagedTeams.includes(tm.team))
+                        // EXCLUDE current user to ensure we only see team members' activity
+                        .filter(tm => tm.email && tm.email.toLowerCase() !== userEmail)
+                        .flatMap(tm => [tm.email, tm.email ? tm.email.toLowerCase() : null, tm.id])
+                        .filter(Boolean);
                     
                     relevantMeetings = meetings.filter(m => {
                         const parts = m.participants || [];
                         return parts.some(p => {
                             const pId = typeof p === 'string' ? p : (p.id || p.email);
-                            if (!pId) return false;
-                            const pLower = pId.toLowerCase().trim();
-                            return teamMemberIds.includes(pLower) || teamMemberIds.includes(pId);
+                            const pEmail = typeof p === 'object' ? p.email : p;
+                            
+                            if (!pId && !pEmail) return false;
+                            
+                            const pIdLower = pId ? pId.toLowerCase().trim() : '';
+                            const pEmailLower = pEmail ? pEmail.toLowerCase().trim() : '';
+
+                            return teamMemberIds.includes(pIdLower) || teamMemberIds.includes(pEmailLower);
                         });
                     });
                 } else {
@@ -1113,8 +1126,24 @@ create table if not exists pending_emails (
                         if (meInTeam.managed_teams) myManagedTeams.push(...meInTeam.managed_teams);
                     }
                     // Removed: if (currentUser?.system_role === 'admin') myManagedTeams.push(...DEPARTMENTS);
-                    const teamMemberEmails = teamMembers.filter(tm => myManagedTeams.includes(tm.team)).map(tm => tm.email);
-                    scopeFiltered = tasks.filter(t => teamMemberEmails.includes(t.assignee));
+                    
+                    const teamMemberIdentifiers = teamMembers
+                        .filter(tm => myManagedTeams.includes(tm.team))
+                        // EXCLUDE current user's email
+                        .filter(tm => tm.email && tm.email.toLowerCase() !== (currentUser?.email || '').toLowerCase())
+                        .flatMap(tm => {
+                             const colleague = colleagues.find(c => c.email === tm.email);
+                             return [tm.email, tm.email?.toLowerCase(), colleague?.id].filter(Boolean);
+                        });
+
+                    scopeFiltered = tasks.filter(t => {
+                        const a = t.assignee; 
+                        if (!a) return false;
+                        // Extra safety check: Exclude own ID or Email
+                        if (a === currentUser?.id || a === currentUser?.email) return false;
+                        
+                        return teamMemberIdentifiers.includes(a) || teamMemberIdentifiers.includes(a.toLowerCase());
+                    });
                 }
                 if (taskFilter === 'all') return scopeFiltered;
                 if (taskFilter === 'completed') return scopeFiltered.filter(t => (t.status === 'completed' || t.done));
