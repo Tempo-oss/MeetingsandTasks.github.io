@@ -387,6 +387,10 @@ create table if not exists pending_emails (
             const [filterOwner, setFilterOwner] = useState('all');
             const [filterStatus, setFilterStatus] = useState('all');
             const [filterDate, setFilterDate] = useState('');
+            
+            // Chart State
+            const [chartStartDate, setChartStartDate] = useState('');
+            const [chartEndDate, setChartEndDate] = useState('');
 
             const uniqueOwners = useMemo(() => {
                 const ownerIds = new Set(tasks.map(t => t.assignee));
@@ -400,6 +404,25 @@ create table if not exists pending_emails (
                 owners.forEach(o => unique.set(o.email || o.id, o));
                 return Array.from(unique.values());
             }, [tasks, attendees]);
+
+            // Chart Data Logic
+            const chartData = useMemo(() => {
+                 let filtered = tasks;
+                 if (chartStartDate) filtered = filtered.filter(t => t.start_date >= chartStartDate);
+                 if (chartEndDate) filtered = filtered.filter(t => t.start_date <= chartEndDate);
+
+                 const counts = {};
+                 filtered.forEach(t => {
+                     const uid = t.assignee;
+                     const user = attendees.find(u => u.id === uid || u.email === uid);
+                     const name = user ? (user.name || user.email).split(' ')[0] : (uid || 'Unassigned'); // Use first name for chart brevity
+                     counts[name] = (counts[name] || 0) + 1;
+                 });
+                 
+                 return Object.entries(counts).map(([name, count]) => ({ name, count })).sort((a,b) => b.count - a.count);
+            }, [tasks, attendees, chartStartDate, chartEndDate]);
+
+            const maxChartVal = Math.max(...chartData.map(d => d.count), 1); 
 
             const meetingsByTitle = useMemo(() => {
                 const groups = {};
@@ -462,6 +485,38 @@ create table if not exists pending_emails (
 
             return (
                 <div className="space-y-6">
+                    {/* CHART SECTION */}
+                    <div className="bg-white p-6 rounded-xl border border-gray-200">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                            <h3 className="text-lg font-bold text-gray-800 flex items-center">
+                                <Icon name="PieChart" className="w-5 h-5 mr-2 text-indigo-600" />
+                                Task Distribution
+                            </h3>
+                            <div className="flex items-center gap-2 text-sm text-gray-600">
+                                <input type="date" value={chartStartDate} onChange={e => setChartStartDate(e.target.value)} className="border border-gray-300 rounded p-1" />
+                                <span>to</span>
+                                <input type="date" value={chartEndDate} onChange={e => setChartEndDate(e.target.value)} className="border border-gray-300 rounded p-1" />
+                            </div>
+                        </div>
+                        
+                        <div className="h-48 flex items-end gap-2 sm:gap-4 overflow-x-auto pb-2">
+                             {chartData.length === 0 ? (
+                                <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">No data for selected period</div>
+                             ) : (
+                                 chartData.map((d, i) => (
+                                     <div key={i} className="flex flex-col items-center min-w-[60px] flex-1 group relative">
+                                        <div className="text-xs font-bold text-gray-600 mb-1 opacity-0 group-hover:opacity-100 transition-opacity absolute -top-5">{d.count}</div>
+                                        <div 
+                                            className="w-full max-w-[40px] bg-indigo-500 rounded-t-md hover:bg-indigo-600 transition-all relative"
+                                            style={{ height: `${(d.count / maxChartVal) * 100}%`, minHeight: '4px' }}
+                                        ></div>
+                                        <div className="text-[10px] text-gray-500 mt-2 truncate w-full text-center" title={d.name}>{d.name}</div>
+                                     </div>
+                                 ))
+                             )}
+                        </div>
+                    </div>
+
                     <div className="bg-white p-4 rounded-xl border border-gray-200 flex flex-wrap gap-4 items-end shadow-sm">
                         <div className="flex flex-col gap-1 w-full sm:w-auto flex-1 min-w-[150px]">
                             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Owner</label>
@@ -1158,7 +1213,6 @@ create table if not exists pending_emails (
                          if (meInTeam.role === 'Owner' && meInTeam.team) myManagedTeams.push(meInTeam.team);
                          if (meInTeam.managed_teams) myManagedTeams.push(...meInTeam.managed_teams);
                     }
-                    
                     // REMOVED Admin Override: strictly show managed teams only
                     // if (currentUser.system_role === 'admin') myManagedTeams.push(...DEPARTMENTS);
                     
