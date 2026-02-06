@@ -1066,12 +1066,12 @@ create table if not exists pending_emails (
                     const docData = await resp.json();
                     let tasksFound = [];
                     
-                    // Improved User Finding Logic
+                    // Helper: Find User in Rich Text (Smart Chips) or Plain Text
                     const findUserInText = (text, richTextElements) => {
-                        // 1. Check for "Smart Chips" (Person mentions in Google Docs JSON)
+                        // 1. Check Smart Chips
                         if (richTextElements && richTextElements.length > 0) {
                             for (const el of richTextElements) {
-                                if (el.person && el.person.personProperties && el.person.personProperties.email) {
+                                if (el.person?.personProperties?.email) {
                                     const email = el.person.personProperties.email;
                                     const user = [...teamMembers, ...((meeting.participants || []).map(p => typeof p === 'string' ? {name:p, id:p} : p))].find(u => 
                                         (u.email && u.email.toLowerCase() === email.toLowerCase())
@@ -1081,15 +1081,15 @@ create table if not exists pending_emails (
                                 }
                             }
                         }
-
-                        // 2. Fallback: Check text for name mentions
+                        // 2. Fallback: Text matching
                         const lowerText = text.toLowerCase();
                         const allUsers = [...teamMembers, ...((meeting.participants || []).map(p => typeof p === 'string' ? {name:p, id:p} : p))];
-                        allUsers.sort((a, b) => (b.name?.length || 0) - (a.name?.length || 0));
+                        allUsers.sort((a, b) => (b.name?.length || 0) - (a.name?.length || 0)); // Longest names first
 
                         for (const u of allUsers) {
                             if (u.name) {
                                 const name = u.name.toLowerCase();
+                                // Match "Rashad Mohamed" or "@Rashad Mohamed" at start of text
                                 if (lowerText.startsWith(name) || lowerText.startsWith('@' + name)) {
                                     return u.id || u.email;
                                 }
@@ -1098,36 +1098,82 @@ create table if not exists pending_emails (
                         return null;
                     };
 
+                    // Helper: Deep extract text from any structural element (Paragraph or Table) to find Dates
+                    const getTextFromStructuralElement = (elem) => {
+                        let text = '';
+                        if (elem.paragraph) {
+                            text += elem.paragraph.elements.map(e => e.textRun?.content || '').join('');
+                        } else if (elem.table) {
+                            elem.table.tableRows.forEach(row => {
+                                row.tableCells.forEach(cell => {
+                                    cell.content.forEach(cellContent => {
+                                        text += getTextFromStructuralElement(cellContent) + ' '; // Add space between cells
+                                    });
+                                });
+                            });
+                        }
+                        return text;
+                    };
+
                     const content = docData.body?.content || [];
                     let searchIndex = 0;
                     let foundDateStr = null;
 
-                    // --- PASS 1: SCAN FOR MOST UPDATED DATE ---
+                    // --- PASS 1: SCAN FOR MOST UPDATED DATE (Including Tables) ---
                     let maxTimestamp = 0;
                     
                     content.forEach((elem, idx) => {
-                        if (elem.paragraph) {
-                            const txt = elem.paragraph.elements.map(e => e.textRun?.content || '').join('').trim();
-                            // Regex matches standard formats: YYYY-MM-DD, MM/DD/YYYY, Oct 10 2023, 10 Oct 2023
-                            const dateMatch = txt.match(/\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s\d{1,2}(?:st|nd|rd|th)?(?:,?\s\d{4})?|\d{1,2}\s(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?(?:\s\d{4})?)\b/i);
-                            
-                            if (dateMatch) {
-                                const ts = Date.parse(dateMatch[0]);
-                                if (!isNaN(ts)) {
-                                    // If we find a newer date, track it
-                                    if (ts > maxTimestamp) {
-                                        maxTimestamp = ts;
-                                        searchIndex = idx + 1; // Start looking AFTER this paragraph
-                                        foundDateStr = new Date(ts).toISOString().split('T')[0];
-                                    }
+                        const txt = getTextFromStructuralElement(elem).trim();
+                        // Extended Regex to capture more formats including "Feb 12, 2026"
+                        const dateMatch = txt.match(/\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s\d{1,2}(?:st|nd|rd|th)?(?:,?\s\d{4})?|\d{1,2}\s(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?(?:\s\d{4})?)\b/i);
+                        
+                        if (dateMatch) {
+                            const ts = Date.parse(dateMatch[0]);
+                            if (!isNaN(ts)) {
+                                // Filter out obviously wrong/old dates (older than 2020) to prevent misfires like "2001"
+                                if (ts > new Date('2020-01-01').getTime() && ts > maxTimestamp) {
+                                    maxTimestamp = ts;
+                                    searchIndex = idx + 1; // Start searching AFTER this structural element
+                                    foundDateStr = new Date(ts).toISOString().split('T')[0];
                                 }
                             }
                         }
                     });
 
-                    // --- PASS 2: COLLECT TASKS FROM START INDEX ---
-                    // If no date found, searchIndex is 0 (scan whole doc).
-                    // If date found, we start scanning AFTER that date line.
+                    // --- PASS 2: COLLECT TASKS ---
+                    // Helper to process a paragraph for tasks
+                    const processParagraphForTask = (paragraph) => {
+                        if (!paragraph.bullet) return null; // Checklist must be a list
+                        
+                        let paraText = '';
+                        let richElements = [];
+                        paragraph.elements.forEach(pElem => {
+                            if (pElem.textRun) paraText += pElem.textRun.content;
+                            if (pElem.person) richElements.push(pElem);
+                        });
+                        
+                        // Clean text: remove "[ ]", "[]", or checkbox chars
+                        let cleanText = paraText.trim().replace(/^\[\s*\]\s*/, '').replace(/^\u2610\s*/, '').trim();
+
+                        if (cleanText.length > 1) {
+                            const assignedTo = findUserInText(cleanText, richElements);
+                            if (assignedTo) {
+                                const assignedUser = [...teamMembers, ...((meeting.participants || []).map(p => typeof p === 'string' ? {name:p, id:p} : p))].find(u => (u.id === assignedTo || u.email === assignedTo));
+                                if (assignedUser && assignedUser.name) {
+                                    const nameRegex = new RegExp(`^@?${assignedUser.name}\\s*`, 'i');
+                                    cleanText = cleanText.replace(nameRegex, '').trim();
+                                }
+                                // Remove leading punctuation like "-" or ":" after name removal
+                                cleanText = cleanText.replace(/^[:\-–—]\s*/, '').trim();
+                                
+                                if (cleanText) {
+                                    return { text: cleanText, assignee: assignedTo };
+                                }
+                            }
+                        }
+                        return null;
+                    };
+
                     for (let i = searchIndex; i < content.length; i++) {
                         const elem = content[i];
                         
@@ -1135,33 +1181,22 @@ create table if not exists pending_emails (
                         if (elem.sectionBreak) break;
                         if (elem.paragraph?.elements?.some(e => e.horizontalRule)) break; 
 
-                        if (elem.paragraph && elem.paragraph.bullet) {
-                            let paraText = '';
-                            let richElements = [];
-
-                            elem.paragraph.elements.forEach(pElem => {
-                                if (pElem.textRun) paraText += pElem.textRun.content;
-                                if (pElem.person) richElements.push(pElem);
+                        if (elem.paragraph) {
+                            const task = processParagraphForTask(elem.paragraph);
+                            if (task) tasksFound.push(task);
+                        } 
+                        // Also scan inside tables for tasks (if Action Items are in a table)
+                        else if (elem.table) {
+                            elem.table.tableRows.forEach(row => {
+                                row.tableCells.forEach(cell => {
+                                    cell.content.forEach(cellElem => {
+                                        if (cellElem.paragraph) {
+                                            const task = processParagraphForTask(cellElem.paragraph);
+                                            if (task) tasksFound.push(task);
+                                        }
+                                    });
+                                });
                             });
-                            
-                            let cleanText = paraText.trim().replace(/^\[\s*\]\s*/, '').trim();
-
-                            if (cleanText.length > 1) {
-                                    const assignedTo = findUserInText(cleanText, richElements);
-                                    
-                                    if (assignedTo) {
-                                        const assignedUser = [...teamMembers, ...((meeting.participants || []).map(p => typeof p === 'string' ? {name:p, id:p} : p))].find(u => (u.id === assignedTo || u.email === assignedTo));
-                                        
-                                        if (assignedUser && assignedUser.name) {
-                                            const nameRegex = new RegExp(`^@?${assignedUser.name}\\s*`, 'i');
-                                            cleanText = cleanText.replace(nameRegex, '').trim();
-                                        }
-                                        
-                                        if (cleanText) {
-                                            tasksFound.push({ text: cleanText, assignee: assignedTo });
-                                        }
-                                    }
-                            }
                         }
                     }
 
