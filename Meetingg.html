@@ -1194,7 +1194,7 @@ create table if not exists pending_emails (
                                     const glyphType = listDetails?.listProperties?.nestingLevels?.[nestingLevel]?.glyphType;
                                     
                                     // STRICT CHECK: Must be a CHECKBOX to be imported
-                                    if (glyphType === 'CHECKBOX') {
+                                    if (glyphType === 'CHECKBOX' || true) { // TEMPORARILY RELAXED FOR DEBUGGING - but normally strict. Kept true to catch the [] format too.
                                         let paraText = '';
                                         let richElements = [];
 
@@ -1210,37 +1210,42 @@ create table if not exists pending_emails (
                                         
                                         paraText = paraText.trim();
                                         
-                                        // Remove checkbox glyphs
-                                        let cleanText = paraText.replace(/^\[\s*\]\s*/, '').trim();
+                                        // Check for manual brackets [ ]
+                                        const manualCheckbox = /^\[\s*\]/.test(paraText);
+                                        const isGoogleCheckbox = glyphType === 'CHECKBOX';
 
-                                        // If text exists
-                                        if (cleanText.length > 1) {
-                                             const assignedTo = findUserInText(cleanText, richElements);
-                                             
-                                             // Always import if text is valid, even if assignedTo is fallback
-                                             if (assignedTo) {
-                                                 // Clean the name from the start of the task text if found via text match
-                                                 // Try to remove "Rashad Mohamed" from "Rashad Mohamed Create"
-                                                 let finalTaskText = cleanText;
-                                                 const assignedUser = [...teamMembers, ...((meeting.participants || []).map(p => typeof p === 'string' ? {name:p, id:p} : p))].find(u => (u.id === assignedTo || u.email === assignedTo));
+                                        if (isGoogleCheckbox || manualCheckbox) {
+                                            // Remove checkbox glyphs
+                                            let cleanText = paraText.replace(/^\[\s*\]\s*/, '').trim();
+
+                                            // If text exists
+                                            if (cleanText.length > 1) {
+                                                 const assignedTo = findUserInText(cleanText, richElements);
                                                  
-                                                 let nameToRemove = assignedUser ? assignedUser.name : assignedTo; // If raw string, use that
-                                                 
-                                                 if (nameToRemove && typeof nameToRemove === 'string') {
-                                                     const nameRegex = new RegExp(`^@?${nameToRemove}\\s*`, 'i');
-                                                     finalTaskText = finalTaskText.replace(nameRegex, '').trim();
+                                                 // Always import if text is valid, even if assignedTo is fallback
+                                                 if (assignedTo) {
+                                                     // Clean the name from the start of the task text if found via text match
+                                                     let finalTaskText = cleanText;
+                                                     const assignedUser = [...teamMembers, ...((meeting.participants || []).map(p => typeof p === 'string' ? {name:p, id:p} : p))].find(u => (u.id === assignedTo || u.email === assignedTo));
+                                                     
+                                                     let nameToRemove = assignedUser ? assignedUser.name : assignedTo; // If raw string, use that
+                                                     
+                                                     if (nameToRemove && typeof nameToRemove === 'string') {
+                                                         const nameRegex = new RegExp(`^@?${nameToRemove}\\s*`, 'i');
+                                                         finalTaskText = finalTaskText.replace(nameRegex, '').trim();
+                                                     }
+                                                     
+                                                     // Extra cleanup for simple first names
+                                                     if (assignedTo !== currentUser.id && typeof assignedTo === 'string' && !assignedTo.includes('@') && !assignedTo.includes('-')) {
+                                                          const simpleNameRegex = new RegExp(`^@?${assignedTo}\\s*`, 'i');
+                                                          finalTaskText = finalTaskText.replace(simpleNameRegex, '').trim();
+                                                     }
+                                                     
+                                                     if (finalTaskText) {
+                                                        tasksFound.push({ text: finalTaskText, assignee: assignedTo });
+                                                     }
                                                  }
-                                                 
-                                                 // Extra cleanup for simple first names
-                                                 if (assignedTo !== currentUser.id && typeof assignedTo === 'string' && !assignedTo.includes('@') && !assignedTo.includes('-')) {
-                                                      const simpleNameRegex = new RegExp(`^@?${assignedTo}\\s*`, 'i');
-                                                      finalTaskText = finalTaskText.replace(simpleNameRegex, '').trim();
-                                                 }
-                                                 
-                                                 if (finalTaskText) {
-                                                    tasksFound.push({ text: finalTaskText, assignee: assignedTo });
-                                                 }
-                                             }
+                                            }
                                         }
                                     }
                                 }
@@ -1410,9 +1415,11 @@ create table if not exists pending_emails (
                         if (meInTeam.role === 'Owner' && meInTeam.team) myManagedTeams.push(meInTeam.team);
                         if (meInTeam.managed_teams) myManagedTeams.push(...meInTeam.managed_teams);
                     }
+                    // Removed: if (currentUser?.system_role === 'admin') myManagedTeams.push(...DEPARTMENTS);
                     
                     const teamMemberIdentifiers = teamMembers
                         .filter(tm => myManagedTeams.includes(tm.team))
+                        // EXCLUDE current user's email so "My Team" only shows OTHERS' tasks
                         .filter(tm => tm.email && tm.email.toLowerCase() !== (currentUser?.email || '').toLowerCase())
                         .flatMap(tm => {
                              const colleague = colleagues.find(c => c.email === tm.email);
