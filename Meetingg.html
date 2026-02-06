@@ -86,8 +86,12 @@ create table if not exists tasks (
     status text default 'pending',
     obstacles text,
     start_date date,
-    end_date date
+    end_date date,
+    reminder_sent boolean default false
 );
+
+-- If tasks table already exists, run this to add the column:
+-- alter table tasks add column if not exists reminder_sent boolean default false;
 
 create table if not exists team_members (
     email text primary key,
@@ -975,6 +979,44 @@ create table if not exists pending_emails (
                 }
             };
 
+            const checkAndSendReminders = async (currentTasks, currentTeam) => {
+                if (!client) return;
+                const today = new Date();
+                const twoDaysFromNow = new Date();
+                twoDaysFromNow.setDate(today.getDate() + 2);
+                const targetDateStr = twoDaysFromNow.toISOString().split('T')[0];
+
+                const tasksDueSoon = currentTasks.filter(t => 
+                    t.end_date === targetDateStr && 
+                    !t.done && 
+                    t.status !== 'completed' &&
+                    t.reminder_sent !== true 
+                );
+
+                if (tasksDueSoon.length > 0) {
+                    console.log(`Found ${tasksDueSoon.length} tasks due on ${targetDateStr} needing reminders.`);
+                    
+                    for (const task of tasksDueSoon) {
+                        const assigneeId = task.assignee;
+                        if (!assigneeId) continue;
+
+                        const user = currentTeam.find(u => u.email === assigneeId || u.id === assigneeId);
+                        
+                        const email = user ? user.email : (assigneeId.includes('@') ? assigneeId : null);
+                        const name = user ? user.name : "there";
+
+                        if (email) {
+                            await queueEmail(
+                                email,
+                                `Reminder: Task Due Soon`,
+                                `Hi ${name},\n\nJust a reminder that the task "${task.text}" is due in 2 days (${targetDateStr}).\n\n- MeetingMate`
+                            );
+                            await client.from('tasks').update({ reminder_sent: true }).eq('id', task.id);
+                        }
+                    }
+                }
+            };
+
             const fetchData = async (sbClient = client) => {
                 if (!sbClient) return;
                 setDbStatus('connecting');
@@ -996,8 +1038,11 @@ create table if not exists pending_emails (
                     const uniqueColleaguesMap = new Map();
                     parsedTeam.forEach(member => uniqueColleaguesMap.set(member.email, member));
                     parsedM.forEach(meet => { if (Array.isArray(meet.participants)) meet.participants.forEach(p => { const key = p.email || p.id || p.name; if (key && !uniqueColleaguesMap.has(key)) uniqueColleaguesMap.set(key, p); }); });
-                    setColleagues(Array.from(uniqueColleaguesMap.values()));
+                    const colleaguesList = Array.from(uniqueColleaguesMap.values());
+                    setColleagues(colleaguesList);
                     setMeetings(parsedM); setTasks(parsedT); setDbStatus(parsedM.length ? 'connected' : 'empty');
+
+                    checkAndSendReminders(parsedT, colleaguesList);
                 } catch (err) {
                     if (err.code === 'TABLE_MISSING') setDbStatus('setup_required'); else { console.error(err); setDbStatus('error'); setErrorMsg(err.message); }
                 }
