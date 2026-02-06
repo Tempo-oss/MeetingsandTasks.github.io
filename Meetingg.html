@@ -1053,12 +1053,14 @@ create table if not exists pending_emails (
                 } catch (e) { console.error(e); alert("Sync Error: " + e.message); } finally { setIsSyncing(false); }
             };
 
-            const handleImportFromDoc = async (meeting) => {
-                if (!session?.provider_token) { alert("Missing Google Token. Please re-login."); return; }
-                if (!meeting.google_doc_link) { alert("No Google Doc linked to this meeting."); return; }
+            const handleImportFromDoc = async (meeting, silent = false) => {
+                if (!session?.provider_token) { if(!silent) alert("Missing Google Token. Please re-login."); return; }
+                if (!meeting.google_doc_link) { if(!silent) alert("No Google Doc linked to this meeting."); return; }
+                
                 const match = meeting.google_doc_link.match(/\/d\/([a-zA-Z0-9-_]+)/);
-                if (!match) { alert("Invalid Google Doc Link."); return; }
+                if (!match) { if(!silent) alert("Invalid Google Doc Link."); return; }
                 const docId = match[1];
+
                 setIsSyncing(true);
                 try {
                     const resp = await fetch(`https://docs.googleapis.com/v1/documents/${docId}`, { headers: { Authorization: `Bearer ${session.provider_token}` } });
@@ -1105,11 +1107,53 @@ create table if not exists pending_emails (
                         return null; // Return null if no assignee found (to skip task)
                     };
 
+                    // Helper to extract date from text
+                    const extractDate = (text) => {
+                        if(!text) return null;
+                        // Match "Feb 4, 2026", "February 4, 2026", "2026-02-04"
+                        const months = "Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December";
+                        const dateRegex = new RegExp(`(${months})\\s+\\d{1,2},?\\s+\\d{4}`, 'i');
+                        const match = text.match(dateRegex);
+                        if (match) return new Date(match[0]);
+                        
+                        const isoMatch = text.match(/\d{4}-\d{2}-\d{2}/);
+                        if(isoMatch) return new Date(isoMatch[0]);
+                        
+                        return null;
+                    };
+
+                    let latestDate = null;
+                    let startProcessingIndex = 0;
+
+                    // Pass 1: Find the latest date header in the doc to determine context
                     if (docData.body && docData.body.content) {
-                        for (const elem of docData.body.content) {
+                        docData.body.content.forEach((elem, index) => {
+                             if (elem.paragraph) {
+                                 let paraText = elem.paragraph.elements.map(e => e.textRun?.content || '').join('').trim();
+                                 if (paraText.length < 100) {
+                                     const d = extractDate(paraText);
+                                     if (d && !isNaN(d.getTime())) {
+                                         if (!latestDate || d > latestDate) {
+                                             latestDate = d;
+                                             startProcessingIndex = index + 1;
+                                         }
+                                     }
+                                 }
+                             }
+                        });
+                    }
+
+                    // Determine Start Date for tasks (Doc Date > Meeting Date > Today)
+                    const taskStartDate = latestDate ? latestDate.toISOString().split('T')[0] : (meeting.date || getTodayISO());
+
+                    // Pass 2: Extract tasks starting from the date found (or top if none) until separator
+                    if (docData.body && docData.body.content) {
+                        for (let i = startProcessingIndex; i < docData.body.content.length; i++) {
+                            const elem = docData.body.content[i];
+                            
                             if (stopProcessing) break;
                             
-                            // Check for Section Break or Horizontal Rule (often separate notes from tasks)
+                            // Check for Section Break or Horizontal Rule
                             if (elem.sectionBreak) {
                                 stopProcessing = true;
                                 break;
@@ -1139,8 +1183,7 @@ create table if not exists pending_emails (
                                     
                                     paraText = paraText.trim();
                                     
-                                    // Remove checkbox glyphs if present in text (e.g. "[ ]", "[]")
-                                    // Google Docs API doesn't always send the glyph in textRun, but just in case
+                                    // Remove checkbox glyphs
                                     let cleanText = paraText.replace(/^\[\s*\]\s*/, '').trim();
 
                                     // If text exists
@@ -1150,7 +1193,6 @@ create table if not exists pending_emails (
                                          // Only proceed if an owner was found
                                          if (assignedTo) {
                                              // Clean the name from the start of the task text if found via text match
-                                             // This makes the task cleaner: "Mohamed Halim Update" -> "Update"
                                              const assignedUser = [...teamMembers, ...((meeting.participants || []).map(p => typeof p === 'string' ? {name:p, id:p} : p))].find(u => (u.id === assignedTo || u.email === assignedTo));
                                              
                                              if (assignedUser && assignedUser.name) {
@@ -1168,20 +1210,44 @@ create table if not exists pending_emails (
                         }
                     }
 
-                    if (tasksFound.length === 0) { alert("No assigned checklist items found above the separator line."); } 
-                    else {
+                    // Deduplication Logic
+                    const existingMeetingTasks = tasks.filter(t => t.meetingId === meeting.id);
+                    const existingTexts = new Set(existingMeetingTasks.map(t => t.text.trim().toLowerCase()));
+                    const uniqueNewTasks = tasksFound.filter(tf => !existingTexts.has(tf.text.trim().toLowerCase()));
+
+                    if (uniqueNewTasks.length === 0) { 
+                        // console.log("No new assigned tasks found in Doc."); 
+                    } else {
                         let createdCount = 0;
-                        const meetingDate = meeting.date || getTodayISO(); // Use Meeting Date
                         
-                        for (const task of tasksFound) {
+                        for (const task of uniqueNewTasks) {
                              const taskId = `t_doc_${Date.now()}_${Math.floor(Math.random()*10000)}`;
-                             setTasks(prev => [...prev, { id: taskId, meetingId: meeting.id, text: task.text, assignee: task.assignee, status: 'pending', start_date: meetingDate, end_date: null }]); // Due date empty
-                             if (client) { await client.from('tasks').insert({ id: taskId, meeting_id: meeting.id, text: task.text, assignee: task.assignee, status: 'pending', start_date: meetingDate, end_date: null }); }
+                             // Use calculated taskStartDate
+                             setTasks(prev => [...prev, { id: taskId, meetingId: meeting.id, text: task.text, assignee: task.assignee, status: 'pending', start_date: taskStartDate, end_date: null }]); 
+                             if (client) { 
+                                await client.from('tasks').insert({ id: taskId, meeting_id: meeting.id, text: task.text, assignee: task.assignee, status: 'pending', start_date: taskStartDate, end_date: null }); 
+                                
+                                // Email Trigger
+                                if (task.assignee !== currentUser.id) {
+                                    const assigneeUser = [...teamMembers, ...((meeting.participants || []).map(p => typeof p === 'string' ? {name:p, id:p, email:p} : p))].find(u => (u.id === task.assignee || u.email === task.assignee));
+                                    let recipientEmail = null;
+                                    let recipientName = 'Team Member';
+                                    if (assigneeUser) {
+                                        recipientEmail = assigneeUser.email;
+                                        recipientName = assigneeUser.name || recipientName;
+                                    } else if (typeof task.assignee === 'string' && task.assignee.includes('@')) {
+                                        recipientEmail = task.assignee;
+                                    }
+                                    if (recipientEmail) {
+                                        queueEmail(recipientEmail, `New Task Imported: ${task.text}`, `Hi ${recipientName},\n\nA new task was imported from the meeting doc: "${task.text}".\nStart Date: ${taskStartDate}\n\n- MeetingMate`);
+                                    }
+                                }
+                             }
                              createdCount++;
                         }
-                        alert(`Imported ${createdCount} assigned tasks from Doc!`);
+                        if (!silent) alert(`Imported ${createdCount} assigned tasks from Doc!`);
                     }
-                } catch (e) { console.error(e); alert("Import failed: " + e.message); } finally { setIsSyncing(false); }
+                } catch (e) { console.error(e); if(!silent) alert("Import failed: " + e.message); } finally { setIsSyncing(false); }
             };
 
             const handleAddTeamMember = async (email, name, team, role, systemRole) => {
@@ -1219,10 +1285,22 @@ create table if not exists pending_emails (
             const handleAddStandaloneTask = (text, assigneeId, start, end) => {
                 if (!text.trim()) return;
                 const newId = `t_${Date.now()}`;
-                const newTask = { id: newId, meeting_id: 'standalone', text: text, assignee: assigneeId || currentUser.id, status: 'pending', start_date: getTodayISO(), end_date: getTodayISO() };
+                const newTask = { id: newId, meeting_id: 'standalone', text: text, assignee: assigneeId || currentUser.id, status: 'pending', start_date: start || getTodayISO(), end_date: end || getTodayISO() };
                 setTasks(prev => [newTask, ...prev]);
                 if (dbStatus === 'connected' && client) { client.from('tasks').insert(newTask).then(({error}) => { if(error) console.error("Error", error); }); }
+                
+                // Email Trigger
+                if (newTask.assignee !== currentUser.id) {
+                     const assigneeUser = teamMembers.find(m => m.email === newTask.assignee || m.id === newTask.assignee) || colleagues.find(c => c.email === newTask.assignee || c.id === newTask.assignee);
+                     if (assigneeUser && assigneeUser.email) {
+                         queueEmail(assigneeUser.email, `New Task Assigned: ${text}`, `Hi ${assigneeUser.name},\n\nYou have been assigned a new task: "${text}".\nStart: ${newTask.start_date}\nDue: ${newTask.end_date}\n\n- MeetingMate`);
+                     }
+                }
                 setShowQuickAdd(false);
+            };
+
+            const handleDateChange = (taskId, newDate) => {
+                handleUpdateTask(taskId, { end_date: newDate });
             };
 
             const isManager = useMemo(() => {
@@ -1246,9 +1324,6 @@ create table if not exists pending_emails (
                          if (meInTeam.role === 'Owner' && meInTeam.team) myManagedTeams.push(meInTeam.team);
                          if (meInTeam.managed_teams) myManagedTeams.push(...meInTeam.managed_teams);
                     }
-                    
-                    // REMOVED Admin Override: strictly show managed teams only
-                    // if (currentUser.system_role === 'admin') myManagedTeams.push(...DEPARTMENTS);
                     
                     const teamMemberIds = teamMembers
                         .filter(tm => myManagedTeams.includes(tm.team))
@@ -1307,7 +1382,6 @@ create table if not exists pending_emails (
                         if (meInTeam.role === 'Owner' && meInTeam.team) myManagedTeams.push(meInTeam.team);
                         if (meInTeam.managed_teams) myManagedTeams.push(...meInTeam.managed_teams);
                     }
-                    // Removed: if (currentUser?.system_role === 'admin') myManagedTeams.push(...DEPARTMENTS);
                     
                     const teamMemberIdentifiers = teamMembers
                         .filter(tm => myManagedTeams.includes(tm.team))
@@ -1436,7 +1510,12 @@ create table if not exists pending_emails (
                                             </form>
                                         </div>
                                     )}
-                                    {filteredTasks.length > 0 ? (filteredTasks.map(t => { const mtg = meetings.find(m => m.id === t.meetingId); const user = allPossibleAssignees.find(c => c.email === t.assignee || c.id === t.assignee) || { name: 'Unknown' }; t.assigneeName = user.name || user.email; return (<TaskCard key={t.id} task={t} meetingTitle={mtg ? mtg.title : (t.meeting_id === 'standalone' ? 'Personal Task' : 'Unknown Meeting')} onStatusChange={(id, val) => handleUpdateTask(id, { status: val, done: val === 'completed' })} onObstacleChange={(id, val) => handleUpdateTask(id, { obstacles: val })} onDateChange={(id, val) => handleUpdateTask(id, { end_date: val })}/>); })) : (<div className="text-center py-12 bg-white rounded-xl border border-dashed text-gray-500">No tasks found matching filter.</div>)}
+                                    {filteredTasks.length > 0 ? (filteredTasks.map(t => { 
+                                        const mtg = meetings.find(m => m.id === t.meetingId); 
+                                        const user = allPossibleAssignees.find(c => c.email === t.assignee || c.id === t.assignee) || { name: 'Unknown' }; 
+                                        t.assigneeName = user.name || user.email; 
+                                        return (<TaskCard key={t.id} task={t} meetingTitle={mtg ? mtg.title : (t.meeting_id === 'standalone' ? 'Personal Task' : 'Unknown Meeting')} onStatusChange={(id, val) => handleUpdateTask(id, { status: val, done: val === 'completed' })} onObstacleChange={(id, val) => handleUpdateTask(id, { obstacles: val })} onDateChange={handleDateChange}/>); 
+                                    })) : (<div className="text-center py-12 bg-white rounded-xl border border-dashed text-gray-500">No tasks found matching filter.</div>)}
                                 </div>
                             ) : dashboardViewMode === 'team' ? (
                                 <TeamList teamMembers={teamMembers} colleagues={colleagues} onAddMember={handleAddTeamMember} onUpdateMember={handleUpdateTeamMember} onRemoveMember={handleRemoveTeamMember}/>
