@@ -1150,29 +1150,50 @@ create table if not exists pending_emails (
 
                             // Helper function to process any paragraph node found (in body or table)
                             const checkNode = (paraNode) => {
-                                if (!paraNode.bullet) return;
+                                // RELAXED: Allow processing if it has a bullet OR if it looks like a task (checkbox/person)
+                                const isBullet = !!paraNode.bullet;
                                 
                                 let paraText = '';
                                 let richElements = [];
-                                paraNode.elements.forEach(pElem => {
-                                    if (pElem.textRun) paraText += pElem.textRun.content;
-                                    if (pElem.person) richElements.push(pElem);
-                                });
                                 
-                                // Clean glyphs and NBSP
-                                let cleanText = paraText.trim().replace(/^\[\s*\]\s*/, '').replace(/^\u2610\s*/, '').replace(/\u00A0/g, ' ').trim();
+                                if (paraNode.elements) {
+                                    paraNode.elements.forEach(pElem => {
+                                        if (pElem.textRun) paraText += pElem.textRun.content;
+                                        if (pElem.person) richElements.push(pElem);
+                                    });
+                                }
+                                
+                                // Standardize spaces
+                                let rawText = paraText.replace(/\u00A0/g, ' ').trim();
+                                
+                                // Detect manual checkbox patterns: [], [ ], ( ), [x]
+                                const manualCheckboxRegex = /^(\[ ?\]|\( ?\)|\u2610|\u2611)\s*/;
+                                const isManualCheckbox = manualCheckboxRegex.test(rawText);
+                                const hasPersonChip = richElements.length > 0;
+
+                                // Guard: If it's not a list, not a manual checkbox, and has no person chip, skip it.
+                                if (!isBullet && !isManualCheckbox && !hasPersonChip) return;
+                                
+                                // Clean the text
+                                let cleanText = rawText
+                                    .replace(manualCheckboxRegex, '') // Remove manual checkbox glyphs
+                                    .replace(/^\u25CF\s*/, '') // Remove bullet dots if they leaked into text
+                                    .trim();
 
                                 if (cleanText.length > 1) {
                                     const assignedTo = findUserInText(cleanText, richElements);
                                     if (assignedTo) {
                                         const assignedUser = [...teamMembers, ...((meeting.participants || []).map(p => typeof p === 'string' ? {name:p, id:p} : p))].find(u => (u.id === assignedTo || u.email === assignedTo));
                                         
-                                        // Strip name from text start
+                                        // Strip name from text start (Case insensitive, handle @)
                                         if (assignedUser && assignedUser.name) {
-                                            const nameRegex = new RegExp(`^@?${assignedUser.name}\\s*`, 'i');
+                                            // escape regex chars in name just in case
+                                            const escapedName = assignedUser.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                                            const nameRegex = new RegExp(`^@?${escapedName}\\s*`, 'i');
                                             cleanText = cleanText.replace(nameRegex, '').trim();
                                         }
-                                        // Cleanup punctuation
+                                        
+                                        // Cleanup punctuation separators (like "- Task", ": Task")
                                         cleanText = cleanText.replace(/^[:\-–—]\s*/, '').trim();
                                         
                                         if (cleanText) {
