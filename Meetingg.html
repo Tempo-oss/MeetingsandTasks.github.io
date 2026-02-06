@@ -55,6 +55,11 @@
             const diffTime = end - today;
             return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         };
+        
+        // Helper to escape special regex characters
+        const escapeRegExp = (string) => {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+        };
 
         const DEPARTMENTS = ['Managers', 'Leaders', 'Quality', 'Training', 'HR', 'Mentors', 'WFM', 'Eng team'];
         const ADMIN_EMAILS = ['mohamed.abdelmagid@tempo.fit', 'halim@tempo.fit', 'nancy@tempo.fit'];
@@ -1146,7 +1151,7 @@ create table if not exists pending_emails (
                         
                         // 3. Last resort: If no user found, assume current user (importer) but allow reassign later
                         //    Or, if text starts with Capital Words, extract that as a raw name assignee
-                        const potentialName = text.match(/^(@?([a-zA-Z]+) ?([a-zA-Z]+)?)/);
+                        const potentialName = text.match(/^(@?([A-Z][a-z]+) ?([A-Z][a-z]+)?)/);
                         if (potentialName && potentialName[0].length > 2) {
                              // Check against a blocklist of common words
                              const nameStr = potentialName[0].replace('@', '').trim();
@@ -1226,7 +1231,6 @@ create table if not exists pending_emails (
                                     const glyphType = listDetails?.listProperties?.nestingLevels?.[nestingLevel]?.glyphType;
                                     
                                     // STRICT CHECK: Must be a CHECKBOX to be imported
-                                    // Also check for manual [ ] if bullet type fails
                                     let isTask = false;
                                     if (glyphType === 'CHECKBOX') isTask = true;
                                     
@@ -1255,13 +1259,12 @@ create table if not exists pending_emails (
                                                  let nameToRemove = assignedUser ? assignedUser.name : assignedTo;
                                                  
                                                  if (nameToRemove && typeof nameToRemove === 'string') {
-                                                     const nameRegex = new RegExp(`^@?${nameToRemove}\\s*[:|-]?\\s*`, 'i');
+                                                     const nameRegex = new RegExp(`^@?${escapeRegExp(nameToRemove)}\\s*[:|-]?\\s*`, 'i');
                                                      finalTaskText = finalTaskText.replace(nameRegex, '').trim();
                                                  }
                                                  
-                                                 // Extra cleanup for simple first names or raw names
-                                                 if (assignedTo !== currentUser.id && typeof assignedTo === 'string' && !assignedTo.includes('@')) {
-                                                      const simpleNameRegex = new RegExp(`^@?${assignedTo}\\s*`, 'i');
+                                                 if (assignedTo !== currentUser.id && typeof assignedTo === 'string' && !assignedTo.includes('@') && !assignedTo.includes('-')) {
+                                                      const simpleNameRegex = new RegExp(`^@?${escapeRegExp(assignedTo)}\\s*`, 'i');
                                                       finalTaskText = finalTaskText.replace(simpleNameRegex, '').trim();
                                                  }
                                                  
@@ -1288,6 +1291,7 @@ create table if not exists pending_emails (
                         
                         for (const task of uniqueNewTasks) {
                              const taskId = `t_doc_${Date.now()}_${Math.floor(Math.random()*10000)}`;
+                             // Use calculated taskStartDate
                              setTasks(prev => [...prev, { id: taskId, meetingId: meeting.id, text: task.text, assignee: task.assignee, status: 'pending', start_date: taskStartDate, end_date: null }]); 
                              if (client) { 
                                 await client.from('tasks').insert({ id: taskId, meeting_id: meeting.id, text: task.text, assignee: task.assignee, status: 'pending', start_date: taskStartDate, end_date: null }); 
@@ -1544,8 +1548,8 @@ create table if not exists pending_emails (
                                                 e.target.reset(); 
                                             }} className="flex flex-col gap-2">
                                                 <div className="flex flex-col sm:flex-row gap-2">
-                                                    <input id="tm-new-text" name="taskText" type="text" placeholder="What do you need to do?" className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" autoFocus />
-                                                    <select id="tm-assignee" name="taskAssignee" className="border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white" defaultValue={currentUser?.id}>
+                                                    <input name="taskText" type="text" placeholder="What do you need to do?" className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" autoFocus />
+                                                    <select name="taskAssignee" className="border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white" defaultValue={currentUser?.id}>
                                                         <option value={currentUser?.id}>Me</option>
                                                         {allPossibleAssignees.filter(u => (u.id || u.email) !== currentUser?.id).map(u => (
                                                             <option key={u.id || u.email} value={u.id || u.email}>{u.name || u.email}</option>
@@ -1555,11 +1559,11 @@ create table if not exists pending_emails (
                                                 <div className="flex flex-col sm:flex-row gap-2 items-center">
                                                     <div className="flex items-center gap-1 w-full sm:w-auto">
                                                         <span className="text-xs text-gray-500">Start:</span>
-                                                        <input id="tm-start" name="taskStartDate" type="date" defaultValue={getTodayISO()} className="border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                                        <input name="taskStartDate" type="date" defaultValue={getTodayISO()} className="border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" />
                                                     </div>
                                                     <div className="flex items-center gap-1 w-full sm:w-auto">
                                                         <span className="text-xs text-gray-500">Due:</span>
-                                                        <input id="tm-end" name="taskEndDate" type="date" defaultValue={getTodayISO()} className="border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                                        <input name="taskEndDate" type="date" defaultValue={getTodayISO()} className="border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" />
                                                     </div>
                                                     <button type="submit" className="bg-indigo-600 text-white px-4 py-1.5 rounded text-sm font-medium whitespace-nowrap ml-auto">Add Task</button>
                                                 </div>
