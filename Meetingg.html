@@ -55,10 +55,9 @@
             const diffTime = end - today;
             return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         };
-        
-        // Helper to escape special regex characters
+
         const escapeRegExp = (string) => {
-            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         };
 
         const DEPARTMENTS = ['Managers', 'Leaders', 'Quality', 'Training', 'HR', 'Mentors', 'WFM', 'Eng team'];
@@ -1151,7 +1150,7 @@ create table if not exists pending_emails (
                         
                         // 3. Last resort: If no user found, assume current user (importer) but allow reassign later
                         //    Or, if text starts with Capital Words, extract that as a raw name assignee
-                        const potentialName = text.match(/^(@?([A-Z][a-z]+) ?([A-Z][a-z]+)?)/);
+                        const potentialName = text.match(/^(@?([a-zA-Z]+) ?([a-zA-Z]+)?)/);
                         if (potentialName && potentialName[0].length > 2) {
                              // Check against a blocklist of common words
                              const nameStr = potentialName[0].replace('@', '').trim();
@@ -1444,6 +1443,7 @@ create table if not exists pending_emails (
                         if (meInTeam.role === 'Owner' && meInTeam.team) myManagedTeams.push(meInTeam.team);
                         if (meInTeam.managed_teams) myManagedTeams.push(...meInTeam.managed_teams);
                     }
+                    // Removed: if (currentUser?.system_role === 'admin') myManagedTeams.push(...DEPARTMENTS);
                     
                     const teamMemberIdentifiers = teamMembers
                         .filter(tm => myManagedTeams.includes(tm.team))
@@ -1548,8 +1548,8 @@ create table if not exists pending_emails (
                                                 e.target.reset(); 
                                             }} className="flex flex-col gap-2">
                                                 <div className="flex flex-col sm:flex-row gap-2">
-                                                    <input name="taskText" type="text" placeholder="What do you need to do?" className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" autoFocus />
-                                                    <select name="taskAssignee" className="border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white" defaultValue={currentUser?.id}>
+                                                    <input id="tm-new-text" name="taskText" type="text" placeholder="What do you need to do?" className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" autoFocus />
+                                                    <select id="tm-assignee" name="taskAssignee" className="border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white" defaultValue={currentUser?.id}>
                                                         <option value={currentUser?.id}>Me</option>
                                                         {allPossibleAssignees.filter(u => (u.id || u.email) !== currentUser?.id).map(u => (
                                                             <option key={u.id || u.email} value={u.id || u.email}>{u.name || u.email}</option>
@@ -1559,11 +1559,11 @@ create table if not exists pending_emails (
                                                 <div className="flex flex-col sm:flex-row gap-2 items-center">
                                                     <div className="flex items-center gap-1 w-full sm:w-auto">
                                                         <span className="text-xs text-gray-500">Start:</span>
-                                                        <input name="taskStartDate" type="date" defaultValue={getTodayISO()} className="border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                                        <input id="tm-start" name="taskStartDate" type="date" defaultValue={getTodayISO()} className="border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" />
                                                     </div>
                                                     <div className="flex items-center gap-1 w-full sm:w-auto">
                                                         <span className="text-xs text-gray-500">Due:</span>
-                                                        <input name="taskEndDate" type="date" defaultValue={getTodayISO()} className="border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                                        <input id="tm-end" name="taskEndDate" type="date" defaultValue={getTodayISO()} className="border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" />
                                                     </div>
                                                     <button type="submit" className="bg-indigo-600 text-white px-4 py-1.5 rounded text-sm font-medium whitespace-nowrap ml-auto">Add Task</button>
                                                 </div>
