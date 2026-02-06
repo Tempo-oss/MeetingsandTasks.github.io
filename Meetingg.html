@@ -1066,8 +1066,29 @@ create table if not exists pending_emails (
                     const docData = await resp.json();
                     
                     // --- HELPERS ---
+                    
+                    // 1. Flatten the document structure into a simple list of paragraphs
+                    // This is CRITICAL because Meeting Notes templates often put Date and Tasks in the SAME table.
+                    const flattenDoc = (content) => {
+                        let nodes = [];
+                        if (!content) return nodes;
+                        
+                        content.forEach(elem => {
+                            if (elem.paragraph) {
+                                nodes.push(elem.paragraph);
+                            } else if (elem.table) {
+                                elem.table.tableRows.forEach(row => {
+                                    row.tableCells.forEach(cell => {
+                                        nodes = nodes.concat(flattenDoc(cell.content));
+                                    });
+                                });
+                            }
+                        });
+                        return nodes;
+                    };
+
                     const findUserInText = (text, richTextElements) => {
-                        // 1. Check Smart Chips
+                        // Priority 1: Smart Chips
                         if (richTextElements && richTextElements.length > 0) {
                             for (const el of richTextElements) {
                                 if (el.person?.personProperties?.email) {
@@ -1080,7 +1101,7 @@ create table if not exists pending_emails (
                                 }
                             }
                         }
-                        // 2. Fallback: Text matching (handling non-breaking spaces)
+                        // Priority 2: Text matching
                         const lowerText = text.toLowerCase().replace(/\u00A0/g, ' ');
                         const allUsers = [...teamMembers, ...((meeting.participants || []).map(p => typeof p === 'string' ? {name:p, id:p} : p))];
                         allUsers.sort((a, b) => (b.name?.length || 0) - (a.name?.length || 0)); 
@@ -1096,104 +1117,80 @@ create table if not exists pending_emails (
                         return null;
                     };
 
-                    const getTextFromStructuralElement = (elem) => {
-                        let text = '';
-                        if (elem.paragraph) {
-                            text += elem.paragraph.elements.map(e => e.textRun?.content || '').join('');
-                        } else if (elem.table) {
-                            elem.table.tableRows.forEach(row => {
-                                row.tableCells.forEach(cell => {
-                                    cell.content.forEach(cellContent => {
-                                        text += getTextFromStructuralElement(cellContent) + ' '; 
-                                    });
-                                });
-                            });
-                        }
-                        return text;
-                    };
-
-                    // --- CORE SCANNING LOGIC ---
-                    const content = docData.body?.content || [];
+                    // --- EXECUTION ---
+                    const flatNodes = flattenDoc(docData.body?.content);
                     
-                    // PASS 1: Find valid Meeting Date (>= 2023 to avoid old/fake dates)
-                    let searchIndex = 0;
+                    // PASS 1: Find the index of the MOST RECENT valid date (>= 2023)
+                    let startIndex = 0;
                     let foundDateStr = null;
                     let maxTimestamp = 0;
                     
-                    content.forEach((elem, idx) => {
-                        const txt = getTextFromStructuralElement(elem).trim();
-                        // Regex for standard dates + "Feb 12, 2026" style. Enforcing 2023+ via logic, not strict regex.
+                    flatNodes.forEach((node, idx) => {
+                        const txt = node.elements.map(e => e.textRun?.content || '').join('').trim();
+                        // Regex for standard dates + "Feb 12, 2026"
                         const dateMatch = txt.match(/\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s\d{1,2}(?:st|nd|rd|th)?(?:,?\s\d{4})?)\b/i);
                         
                         if (dateMatch) {
                             const ts = Date.parse(dateMatch[0]);
                             if (!isNaN(ts)) {
-                                // STRICT FILTER: Ignore dates before Jan 1, 2023 to filter out noise/garbage
+                                // STRICT FILTER: Only consider dates after Jan 1, 2023
                                 if (ts > new Date('2023-01-01').getTime() && ts > maxTimestamp) {
                                     maxTimestamp = ts;
-                                    searchIndex = idx + 1; 
+                                    startIndex = idx + 1; // Start scanning paragraphs immediately following the date
                                     foundDateStr = new Date(ts).toISOString().split('T')[0];
                                 }
                             }
                         }
                     });
 
-                    // Helper to scan a slice of content for tasks
-                    const scanForTasks = (startIndex) => {
+                    // PASS 2: Scan for tasks starting from the calculated index
+                    const scanNodesForTasks = (startIdx) => {
                         const results = [];
-                        for (let i = startIndex; i < content.length; i++) {
-                            const elem = content[i];
+                        for (let i = startIdx; i < flatNodes.length; i++) {
+                            const paraNode = flatNodes[i];
                             
-                            // Stop if we hit a major separator (Section Break or Horizontal Rule)
-                            if (elem.sectionBreak) break;
-                            if (elem.paragraph?.elements?.some(e => e.horizontalRule)) break; 
+                            // Check for separators (if we hit a horizontal rule inside this paragraph)
+                            if (paraNode.elements?.some(e => e.horizontalRule)) break;
 
-                            // Helper function to process any paragraph node found (in body or table)
-                            const checkNode = (paraNode) => {
-                                // RELAXED: Allow processing if it has a bullet OR if it looks like a task (checkbox/person)
-                                const isBullet = !!paraNode.bullet;
-                                
-                                let paraText = '';
-                                let richElements = [];
-                                
-                                if (paraNode.elements) {
-                                    paraNode.elements.forEach(pElem => {
-                                        if (pElem.textRun) paraText += pElem.textRun.content;
-                                        if (pElem.person) richElements.push(pElem);
-                                    });
-                                }
-                                
-                                // Standardize spaces
-                                let rawText = paraText.replace(/\u00A0/g, ' ').trim();
-                                
-                                // Detect manual checkbox patterns: [], [ ], ( ), [x]
-                                const manualCheckboxRegex = /^(\[ ?\]|\( ?\)|\u2610|\u2611)\s*/;
-                                const isManualCheckbox = manualCheckboxRegex.test(rawText);
-                                const hasPersonChip = richElements.length > 0;
+                            // 1. Extract Raw Text & Rich Elements
+                            let paraText = '';
+                            let richElements = [];
+                            
+                            paraNode.elements.forEach(pElem => {
+                                if (pElem.textRun) paraText += pElem.textRun.content;
+                                if (pElem.person) richElements.push(pElem);
+                            });
+                            
+                            let rawText = paraText.replace(/\u00A0/g, ' ').trim();
 
-                                // Guard: If it's not a list, not a manual checkbox, and has no person chip, skip it.
-                                if (!isBullet && !isManualCheckbox && !hasPersonChip) return;
-                                
-                                // Clean the text
+                            // 2. Identify if it's a Task
+                            // It is a task if: It has a bullet OR it has a manual checkbox OR it has a Person Chip at the start
+                            const isBullet = !!paraNode.bullet;
+                            const manualCheckboxRegex = /^(\[ ?\]|\( ?\)|\u2610|\u2611)\s*/;
+                            const isManualCheckbox = manualCheckboxRegex.test(rawText);
+                            const hasPersonChip = richElements.length > 0;
+
+                            if (isBullet || isManualCheckbox || hasPersonChip) {
+                                // 3. Clean the text
                                 let cleanText = rawText
-                                    .replace(manualCheckboxRegex, '') // Remove manual checkbox glyphs
-                                    .replace(/^\u25CF\s*/, '') // Remove bullet dots if they leaked into text
+                                    .replace(manualCheckboxRegex, '') // Remove [ ]
+                                    .replace(/^\u25CF\s*/, '') // Remove bullet dot char
                                     .trim();
 
                                 if (cleanText.length > 1) {
                                     const assignedTo = findUserInText(cleanText, richElements);
+                                    
                                     if (assignedTo) {
                                         const assignedUser = [...teamMembers, ...((meeting.participants || []).map(p => typeof p === 'string' ? {name:p, id:p} : p))].find(u => (u.id === assignedTo || u.email === assignedTo));
                                         
-                                        // Strip name from text start (Case insensitive, handle @)
+                                        // Remove name from text (e.g., "Rashad Mohamed Create..." -> "Create...")
                                         if (assignedUser && assignedUser.name) {
-                                            // escape regex chars in name just in case
                                             const escapedName = assignedUser.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                                             const nameRegex = new RegExp(`^@?${escapedName}\\s*`, 'i');
                                             cleanText = cleanText.replace(nameRegex, '').trim();
                                         }
                                         
-                                        // Cleanup punctuation separators (like "- Task", ": Task")
+                                        // Remove separators like ":" or "-"
                                         cleanText = cleanText.replace(/^[:\-–—]\s*/, '').trim();
                                         
                                         if (cleanText) {
@@ -1201,32 +1198,18 @@ create table if not exists pending_emails (
                                         }
                                     }
                                 }
-                            };
-
-                            if (elem.paragraph) {
-                                checkNode(elem.paragraph);
-                            } else if (elem.table) {
-                                elem.table.tableRows.forEach(row => {
-                                    row.tableCells.forEach(cell => {
-                                        cell.content.forEach(cellElem => {
-                                            if (cellElem.paragraph) checkNode(cellElem.paragraph);
-                                        });
-                                    });
-                                });
                             }
                         }
                         return results;
                     };
 
-                    // Execute Scan
-                    let tasksFound = scanForTasks(searchIndex);
+                    let tasksFound = scanNodesForTasks(startIndex);
                     let usedDateFallback = false;
 
-                    // FALLBACK: If a date was found but ZERO tasks were extracted, it might be a false positive date 
-                    // or the tasks are above it. Retry by scanning the WHOLE document.
+                    // FALLBACK: If date found but no tasks, scan whole doc (maybe date was at bottom?)
                     if (foundDateStr && tasksFound.length === 0) {
                         console.log("No tasks found under date " + foundDateStr + ". Retrying full doc scan.");
-                        tasksFound = scanForTasks(0);
+                        tasksFound = scanNodesForTasks(0);
                         usedDateFallback = true;
                     }
 
@@ -1235,7 +1218,6 @@ create table if not exists pending_emails (
                     } 
                     else {
                         let createdCount = 0;
-                        // Determine appropriate start date
                         const taskStartDate = (!usedDateFallback && foundDateStr) ? foundDateStr : (meeting.date || getTodayISO()); 
                         
                         for (const task of tasksFound) {
