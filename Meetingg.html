@@ -232,6 +232,8 @@ create table if not exists pending_emails (
                     {onSync && (dbStatus === 'empty' || dbStatus === 'connected') && 
                         <div className="flex items-center space-x-2">
                             <select 
+                                id="sync-range"
+                                name="syncRange"
                                 value={syncRange}
                                 onChange={(e) => setSyncRange(e.target.value)}
                                 className="text-xs border-gray-300 rounded border p-1 text-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 hidden sm:block"
@@ -325,6 +327,8 @@ create table if not exists pending_emails (
                 <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow">
                     <div className="flex items-start space-x-3 mb-2">
                         <select
+                            id={`task-status-${task.id}`}
+                            name={`taskStatus-${task.id}`}
                             value={currentStatus}
                             onChange={(e) => onStatusChange(task.id, e.target.value)}
                             className={`text-xs font-bold uppercase tracking-wider px-2 py-1 rounded border cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
@@ -350,6 +354,8 @@ create table if not exists pending_emails (
                                     <span className="text-gray-500">• Due:</span>
                                     <input 
                                         type="date" 
+                                        id={`task-due-${task.id}`}
+                                        name={`taskDue-${task.id}`}
                                         className="bg-transparent border-b border-transparent hover:border-gray-300 focus:border-indigo-500 outline-none text-gray-600 p-0 h-auto w-auto"
                                         value={task.end_date || ''}
                                         onChange={(e) => onDateChange && onDateChange(task.id, e.target.value)}
@@ -380,6 +386,8 @@ create table if not exists pending_emails (
                             Obstacles / Notes
                         </div>
                         <textarea
+                            id={`task-notes-${task.id}`}
+                            name={`taskNotes-${task.id}`}
                             className="w-full text-xs p-2 border border-gray-200 rounded bg-gray-50 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none resize-y"
                             rows="2"
                             placeholder="Mention any obstacles faced here..."
@@ -501,9 +509,9 @@ create table if not exists pending_emails (
                                 Task Distribution
                             </h3>
                             <div className="flex items-center gap-2 text-sm text-gray-600">
-                                <input type="date" value={chartStartDate} onChange={e => setChartStartDate(e.target.value)} className="border border-gray-300 rounded p-1" />
+                                <input type="date" id="chart-start" name="chartStart" value={chartStartDate} onChange={e => setChartStartDate(e.target.value)} className="border border-gray-300 rounded p-1" />
                                 <span>to</span>
-                                <input type="date" value={chartEndDate} onChange={e => setChartEndDate(e.target.value)} className="border border-gray-300 rounded p-1" />
+                                <input type="date" id="chart-end" name="chartEnd" value={chartEndDate} onChange={e => setChartEndDate(e.target.value)} className="border border-gray-300 rounded p-1" />
                             </div>
                         </div>
                         
@@ -527,23 +535,42 @@ create table if not exists pending_emails (
 
                     <div className="bg-white p-4 rounded-xl border border-gray-200 flex flex-wrap gap-4 items-end shadow-sm">
                         <div className="flex flex-col gap-1 w-full sm:w-auto flex-1 min-w-[150px]">
-                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Owner</label>
-                            <select value={filterOwner} onChange={(e) => setFilterOwner(e.target.value)} className="text-sm border-gray-300 rounded-md shadow-sm border p-2 w-full focus:ring-2 focus:ring-indigo-500 outline-none">
+                            <label htmlFor="filter-owner" className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Owner</label>
+                            <select 
+                                id="filter-owner"
+                                name="filterOwner"
+                                value={filterOwner} 
+                                onChange={(e) => setFilterOwner(e.target.value)} 
+                                className="text-sm border-gray-300 rounded-md shadow-sm border p-2 w-full focus:ring-2 focus:ring-indigo-500 outline-none"
+                            >
                                 <option value="all">All Owners</option>
                                 {uniqueOwners.map(u => <option key={u.id || u.email} value={u.id || u.email}>{u.name || u.email}</option>)}
                             </select>
                         </div>
                         <div className="flex flex-col gap-1 w-full sm:w-auto w-[120px]">
-                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Status</label>
-                            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="text-sm border-gray-300 rounded-md shadow-sm border p-2 w-full focus:ring-2 focus:ring-indigo-500 outline-none">
+                            <label htmlFor="filter-status" className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Status</label>
+                            <select 
+                                id="filter-status"
+                                name="filterStatus"
+                                value={filterStatus} 
+                                onChange={(e) => setFilterStatus(e.target.value)} 
+                                className="text-sm border-gray-300 rounded-md shadow-sm border p-2 w-full focus:ring-2 focus:ring-indigo-500 outline-none"
+                            >
                                 <option value="all">All</option>
                                 <option value="pending">Pending</option>
                                 <option value="completed">Completed</option>
                             </select>
                         </div>
                         <div className="flex flex-col gap-1 w-full sm:w-auto">
-                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Date</label>
-                            <input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="text-sm border-gray-300 rounded-md shadow-sm border p-2 focus:ring-2 focus:ring-indigo-500 outline-none"/>
+                            <label htmlFor="filter-date" className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Date</label>
+                            <input 
+                                id="filter-date"
+                                name="filterDate"
+                                type="date" 
+                                value={filterDate} 
+                                onChange={(e) => setFilterDate(e.target.value)} 
+                                className="text-sm border-gray-300 rounded-md shadow-sm border p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
+                            />
                         </div>
                         <button onClick={clearFilters} className="text-sm text-red-600 hover:bg-red-50 px-3 py-2 rounded-md transition-colors flex items-center mb-[1px]" title="Reset all filters">
                             <Icon name="XCircle" className="w-4 h-4 mr-1" /> Clear
@@ -645,11 +672,11 @@ create table if not exists pending_emails (
                     <div className="bg-white p-6 rounded-xl border border-gray-200">
                         <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center"><Icon name="UserPlus" className="w-5 h-5 mr-2 text-indigo-600" /> Add Team Member</h3>
                         <form onSubmit={handleSubmit} className="flex flex-col md:flex-row gap-4">
-                            <input type="text" placeholder="Name" value={newName} onChange={(e) => setNewName(e.target.value)} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"/>
-                            <input type="email" placeholder="Email (@tempo.fit)" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"/>
-                            <select value={newTeam} onChange={(e) => setNewTeam(e.target.value)} className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white flex-1">{DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}</select>
-                            <select value={newRole} onChange={(e) => setNewRole(e.target.value)} className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white flex-1"><option value="Member">Member</option><option value="Owner">Owner</option></select>
-                            <select value={newSystemRole} onChange={(e) => setNewSystemRole(e.target.value)} className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white flex-1" title="System Role"><option value="user">User (Restricted)</option><option value="admin">Admin (Full Access)</option></select>
+                            <input id="new-name" name="newName" type="text" placeholder="Name" value={newName} onChange={(e) => setNewName(e.target.value)} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"/>
+                            <input id="new-email" name="newEmail" type="email" placeholder="Email (@tempo.fit)" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"/>
+                            <select id="new-team" name="newTeam" value={newTeam} onChange={(e) => setNewTeam(e.target.value)} className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white flex-1">{DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}</select>
+                            <select id="new-role" name="newRole" value={newRole} onChange={(e) => setNewRole(e.target.value)} className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white flex-1"><option value="Member">Member</option><option value="Owner">Owner</option></select>
+                            <select id="new-system-role" name="newSystemRole" value={newSystemRole} onChange={(e) => setNewSystemRole(e.target.value)} className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white flex-1" title="System Role"><option value="user">User (Restricted)</option><option value="admin">Admin (Full Access)</option></select>
                             <button type="submit" className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition-colors font-medium">Add</button>
                         </form>
                     </div>
@@ -664,9 +691,9 @@ create table if not exists pending_emails (
                                         <div key={email} className="flex flex-col sm:flex-row items-center gap-2 p-2 hover:bg-gray-50 rounded-lg transition-colors border border-gray-100">
                                             <div className="flex items-center space-x-2 flex-1 w-full"><UserAvatar user={m} size="xs" /><div className="truncate"><p className="text-sm text-gray-800 truncate">{m.name || email}</p><p className="text-[10px] text-gray-500 truncate">{email}</p></div></div>
                                             <div className="flex gap-1 w-full sm:w-auto items-center">
-                                                <select value={m.team || ''} onChange={(e) => onUpdateMember(email, { team: e.target.value })} className="text-[10px] border-gray-200 rounded p-1 bg-white focus:outline-none w-1/2 sm:w-auto min-w-[80px]"><option value="">Select Team</option>{DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}<option value="">Unassigned</option></select>
-                                                <select value={m.role || 'Member'} onChange={(e) => onUpdateMember(email, { role: e.target.value })} className="text-[10px] border-gray-200 rounded p-1 bg-white focus:outline-none w-1/2 sm:w-auto"><option value="Member">Member</option><option value="Owner">Owner</option></select>
-                                                <select value={m.system_role || 'user'} onChange={(e) => onUpdateMember(email, { system_role: e.target.value })} className="text-[10px] border-gray-200 rounded p-1 bg-white focus:outline-none w-1/2 sm:w-auto"><option value="user">User</option><option value="admin">Admin</option></select>
+                                                <select id={`team-${email}`} name={`team-${email}`} value={m.team || ''} onChange={(e) => onUpdateMember(email, { team: e.target.value })} className="text-[10px] border-gray-200 rounded p-1 bg-white focus:outline-none w-1/2 sm:w-auto min-w-[80px]"><option value="">Select Team</option>{DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}<option value="">Unassigned</option></select>
+                                                <select id={`role-${email}`} name={`role-${email}`} value={m.role || 'Member'} onChange={(e) => onUpdateMember(email, { role: e.target.value })} className="text-[10px] border-gray-200 rounded p-1 bg-white focus:outline-none w-1/2 sm:w-auto"><option value="Member">Member</option><option value="Owner">Owner</option></select>
+                                                <select id={`sys-role-${email}`} name={`sysRole-${email}`} value={m.system_role || 'user'} onChange={(e) => onUpdateMember(email, { system_role: e.target.value })} className="text-[10px] border-gray-200 rounded p-1 bg-white focus:outline-none w-1/2 sm:w-auto"><option value="user">User</option><option value="admin">Admin</option></select>
                                                 <button onClick={() => handleRemoveTeamMember(email)} className="text-gray-400 hover:text-red-500 p-1" title="Remove"><Icon name="Trash2" className="w-4 h-4" /></button>
                                             </div>
                                         </div>
@@ -692,7 +719,7 @@ create table if not exists pending_emails (
                                                     <div key={o.email} className="flex flex-col items-start gap-2 bg-yellow-50 p-2 rounded-lg border border-yellow-100">
                                                         <div className="flex items-center space-x-2 w-full"><UserAvatar user={o} size="sm" /><div className="truncate flex-1"><p className="text-sm font-semibold text-gray-900 truncate">{o.name}</p><div className="flex items-center gap-1"><p className="text-xs text-gray-500 truncate">{o.email}</p>{o.system_role === 'admin' && <Icon name="Shield" className="w-3 h-3 text-blue-500" title="Admin User"/>}</div></div></div>
                                                         {o.team === team ? (
-                                                            <div className="flex gap-1 w-full"><select value={o.team || ''} onChange={(e) => onUpdateMember(o.email, { team: e.target.value })} className="text-[10px] border border-yellow-200 rounded p-1 bg-white focus:outline-none w-1/2">{DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}<option value="">Unassigned</option></select><select value={o.role || 'Member'} onChange={(e) => onUpdateMember(o.email, { role: e.target.value })} className="text-[10px] border border-yellow-200 rounded p-1 bg-white focus:outline-none w-1/2"><option value="Member">Member</option><option value="Owner">Owner</option></select></div>
+                                                            <div className="flex gap-1 w-full"><select id={`team-${o.email}`} name={`team-${o.email}`} value={o.team || ''} onChange={(e) => onUpdateMember(o.email, { team: e.target.value })} className="text-[10px] border border-yellow-200 rounded p-1 bg-white focus:outline-none w-1/2">{DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}<option value="">Unassigned</option></select><select id={`role-${o.email}`} name={`role-${o.email}`} value={o.role || 'Member'} onChange={(e) => onUpdateMember(o.email, { role: e.target.value })} className="text-[10px] border border-yellow-200 rounded p-1 bg-white focus:outline-none w-1/2"><option value="Member">Member</option><option value="Owner">Owner</option></select></div>
                                                         ) : <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1 rounded">Via Managers</span>}
                                                     </div>
                                                 ))}
@@ -702,8 +729,8 @@ create table if not exists pending_emails (
                                             {regularMembers.length === 0 ? <p className="text-sm text-gray-400 italic">No members yet.</p> : regularMembers.map(m => (
                                                 <div key={m.email} className="flex flex-col gap-2 p-1.5 hover:bg-gray-50 rounded-lg transition-colors border border-transparent hover:border-gray-100">
                                                     <div className="flex items-center space-x-2 w-full"><UserAvatar user={m} size="xs" /><div className="truncate flex-1"><p className="text-sm text-gray-800 truncate">{m.name}</p><div className="flex items-center gap-1"><p className="text-[10px] text-gray-500 truncate">{m.email}</p>{m.system_role === 'admin' && <Icon name="Shield" className="w-3 h-3 text-blue-500" title="Admin User"/>}</div></div><button onClick={() => handleRemoveTeamMember(m.email)} className="text-gray-400 hover:text-red-500 p-1" title="Remove"><Icon name="Trash2" className="w-3 h-3" /></button></div>
-                                                    <div className="flex gap-1 w-full"><select value={m.team || ''} onChange={(e) => onUpdateMember(m.email, { team: e.target.value })} className="text-[10px] border-gray-200 rounded p-1 bg-white focus:outline-none w-1/2">{DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}<option value="">Unassigned</option></select><select value={m.role || 'Member'} onChange={(e) => onUpdateMember(m.email, { role: e.target.value })} className="text-[10px] border-gray-200 rounded p-1 bg-white focus:outline-none w-1/2"><option value="Member">Member</option><option value="Owner">Owner</option></select></div>
-                                                    {m.team === 'Managers' && (<div className="w-full pt-1 border-t border-gray-100 mt-1"><p className="text-[10px] font-bold text-gray-400 mb-1">Manages:</p><div className="flex flex-wrap gap-1 mb-1">{(m.managed_teams || []).map(mt => (<span key={mt} className="text-[9px] bg-green-50 text-green-700 border border-green-100 px-1 rounded flex items-center">{mt}<button onClick={() => handleRemoveManagedTeam(m.email, m.managed_teams, mt)} className="ml-1 hover:text-red-500">×</button></span>))}</div><select value="" onChange={(e) => handleAddManagedTeam(m.email, m.managed_teams || [], e.target.value)} className="text-[10px] w-full border border-gray-200 rounded bg-gray-50"><option value="">+ Add Team</option>{DEPARTMENTS.filter(d => d !== 'Managers').map(d => <option key={d} value={d}>{d}</option>)}</select></div>)}
+                                                    <div className="flex gap-1 w-full"><select id={`team-${m.email}`} name={`team-${m.email}`} value={m.team || ''} onChange={(e) => onUpdateMember(m.email, { team: e.target.value })} className="text-[10px] border-gray-200 rounded p-1 bg-white focus:outline-none w-1/2">{DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}<option value="">Unassigned</option></select><select id={`role-${m.email}`} name={`role-${m.email}`} value={m.role || 'Member'} onChange={(e) => onUpdateMember(m.email, { role: e.target.value })} className="text-[10px] border-gray-200 rounded p-1 bg-white focus:outline-none w-1/2"><option value="Member">Member</option><option value="Owner">Owner</option></select></div>
+                                                    {m.team === 'Managers' && (<div className="w-full pt-1 border-t border-gray-100 mt-1"><p className="text-[10px] font-bold text-gray-400 mb-1">Manages:</p><div className="flex flex-wrap gap-1 mb-1">{(m.managed_teams || []).map(mt => (<span key={mt} className="text-[9px] bg-green-50 text-green-700 border border-green-100 px-1 rounded flex items-center">{mt}<button onClick={() => handleRemoveManagedTeam(m.email, m.managed_teams, mt)} className="ml-1 hover:text-red-500">×</button></span>))}</div><select id={`add-managed-${m.email}`} name={`addManaged-${m.email}`} value="" onChange={(e) => handleAddManagedTeam(m.email, m.managed_teams || [], e.target.value)} className="text-[10px] w-full border border-gray-200 rounded bg-gray-50"><option value="">+ Add Team</option>{DEPARTMENTS.filter(d => d !== 'Managers').map(d => <option key={d} value={d}>{d}</option>)}</select></div>)}
                                                 </div>
                                             ))}
                                         </div></div>
@@ -751,10 +778,10 @@ create table if not exists pending_emails (
                     <div className="p-6 border-b border-gray-200 bg-white">
                         <h2 className="text-xl font-bold text-gray-800 flex items-center"><Icon name="CheckSquare" className="w-6 h-6 mr-3 text-indigo-600" /> Action Items</h2>
                         <form onSubmit={handleAdd} className="mt-4 flex flex-col gap-2">
-                            <input type="text" placeholder="New task description..." className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500 border p-2" value={newTaskText} onChange={(e) => setNewTaskText(e.target.value)} />
+                            <input id="tm-new-text" name="taskText" type="text" placeholder="New task description..." className="w-full text-sm border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500 border p-2" value={newTaskText} onChange={(e) => setNewTaskText(e.target.value)} />
                             <div className="flex gap-2">
                                 <div className="w-1/3">
-                                    <select className="w-full text-sm border-gray-300 rounded-md shadow-sm border p-2 bg-white" value={assignee} onChange={(e) => setAssignee(e.target.value)}>
+                                    <select id="tm-assignee" name="taskAssignee" className="w-full text-sm border-gray-300 rounded-md shadow-sm border p-2 bg-white" value={assignee} onChange={(e) => setAssignee(e.target.value)}>
                                         <option value={currentUserId}>Me</option>
                                         {(() => {
                                             const uniqueUsers = new Map();
@@ -765,8 +792,8 @@ create table if not exists pending_emails (
                                     </select>
                                 </div>
                                 <div className="flex-1 flex gap-2">
-                                    <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-1/2 text-sm border p-2 rounded" title="Start Date"/>
-                                    <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-1/2 text-sm border p-2 rounded" title="Due Date"/>
+                                    <input id="tm-start" name="taskStartDate" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-1/2 text-sm border p-2 rounded" title="Start Date"/>
+                                    <input id="tm-end" name="taskEndDate" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-1/2 text-sm border p-2 rounded" title="Due Date"/>
                                 </div>
                                 <button type="submit" disabled={!newTaskText.trim()} className="bg-indigo-600 text-white p-2 rounded-md hover:bg-indigo-700 disabled:opacity-50"><Icon name="Plus" className="w-5 h-5" /></button>
                             </div>
@@ -846,9 +873,9 @@ create table if not exists pending_emails (
                             <button onClick={() => setAuthMethod('magic')} className={`pb-1 border-b-2 transition-colors ${authMethod === 'magic' ? 'border-indigo-600 text-indigo-600 font-medium' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Magic Link</button>
                         </div>
                         {authMethod === 'magic' ? ( !magicSent ? (
-                            <form onSubmit={handleMagicLink} className="space-y-3 text-left"><div><label className="text-xs font-medium text-gray-700">Email Address</label><input type="email" placeholder="name@example.com" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none mt-1" value={email} onChange={(e) => setEmail(e.target.value)} required/></div><button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center justify-center space-x-2"><Icon name="Mail" className="w-4 h-4" /><span>Send Magic Link</span></button></form>
+                            <form onSubmit={handleMagicLink} className="space-y-3 text-left"><div><label htmlFor="magic-email" className="text-xs font-medium text-gray-700">Email Address</label><input id="magic-email" name="email" type="email" placeholder="name@example.com" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none mt-1" value={email} onChange={(e) => setEmail(e.target.value)} required/></div><button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center justify-center space-x-2"><Icon name="Mail" className="w-4 h-4" /><span>Send Magic Link</span></button></form>
                         ) : (<div className="mb-6 bg-green-50 text-green-700 p-3 rounded-lg text-sm">Check your email for the login link!</div>) ) : (
-                            <form onSubmit={handlePasswordAction} className="space-y-3 text-left"><div><label className="text-xs font-medium text-gray-700">Email Address</label><input type="email" placeholder="name@example.com" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none mt-1" value={email} onChange={(e) => setEmail(e.target.value)} required/></div>{!isForgot && (<div><label className="text-xs font-medium text-gray-700">Password</label><input type="password" placeholder="••••••••" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none mt-1" value={password} onChange={(e) => setPassword(e.target.value)} required/></div>)}<button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center justify-center space-x-2">{isForgot ? 'Send Reset Link' : (isSignUp ? 'Create Account' : 'Sign In')}</button><div className="flex justify-between text-xs mt-4">{!isForgot && (<button type="button" onClick={() => setIsSignUp(!isSignUp)} className="text-indigo-600 hover:underline">{isSignUp ? 'Already have an account? Sign In' : 'Need an account? Sign Up'}</button>)}<button type="button" onClick={() => setIsForgot(!isForgot)} className="text-gray-500 hover:text-gray-700">{isForgot ? 'Back to Login' : 'Forgot Password?'}</button></div></form>
+                            <form onSubmit={handlePasswordAction} className="space-y-3 text-left"><div><label htmlFor="login-email" className="text-xs font-medium text-gray-700">Email Address</label><input id="login-email" name="email" type="email" placeholder="name@example.com" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none mt-1" value={email} onChange={(e) => setEmail(e.target.value)} required/></div>{!isForgot && (<div><label htmlFor="login-password" className="text-xs font-medium text-gray-700">Password</label><input id="login-password" name="password" type="password" placeholder="••••••••" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none mt-1" value={password} onChange={(e) => setPassword(e.target.value)} required/></div>)}<button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center justify-center space-x-2">{isForgot ? 'Send Reset Link' : (isSignUp ? 'Create Account' : 'Sign In')}</button><div className="flex justify-between text-xs mt-4">{!isForgot && (<button type="button" onClick={() => setIsSignUp(!isSignUp)} className="text-indigo-600 hover:underline">{isSignUp ? 'Already have an account? Sign In' : 'Need an account? Sign Up'}</button>)}<button type="button" onClick={() => setIsForgot(!isForgot)} className="text-gray-500 hover:text-gray-700">{isForgot ? 'Back to Login' : 'Forgot Password?'}</button></div></form>
                         )}
                         <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-left"><h4 className="text-xs font-bold text-yellow-800 mb-1 flex items-center"><Icon name="AlertCircle" className="w-3 h-3 mr-1" />Trouble Signing In?</h4><p className="text-xs text-yellow-700 mb-2"><strong>Google Error?</strong> Verify your Redirect URL in Google Cloud Console matches exactly:</p><code className="block bg-yellow-100 p-1.5 rounded text-[10px] break-all font-mono mb-2">{window.location.href}</code></div>
                     </div>
@@ -861,7 +888,7 @@ create table if not exists pending_emails (
             const [message, setMessage] = useState('');
             const handleReset = (e) => { e.preventDefault(); onReset(newPassword); setMessage('Password updated! Redirecting...'); };
             return (
-                <div className="h-full flex items-center justify-center bg-gray-50 p-4"><div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center"><div className="bg-indigo-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6"><Icon name="Key" className="w-8 h-8 text-indigo-600" /></div><h1 className="text-2xl font-bold text-gray-900 mb-2">Set New Password</h1><p className="text-gray-500 mb-6">Enter your new password below.</p><form onSubmit={handleReset} className="space-y-4"><input type="password" placeholder="New Password" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength="6"/><button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">Update Password</button></form>{message && <p className="mt-4 text-green-600 text-sm font-medium">{message}</p>}</div></div>
+                <div className="h-full flex items-center justify-center bg-gray-50 p-4"><div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center"><div className="bg-indigo-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6"><Icon name="Key" className="w-8 h-8 text-indigo-600" /></div><h1 className="text-2xl font-bold text-gray-900 mb-2">Set New Password</h1><p className="text-gray-500 mb-6">Enter your new password below.</p><form onSubmit={handleReset} className="space-y-4"><input id="reset-password" name="newPassword" type="password" placeholder="New Password" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength="6"/><button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">Update Password</button></form>{message && <p className="mt-4 text-green-600 text-sm font-medium">{message}</p>}</div></div>
             );
         };
 
@@ -1520,8 +1547,8 @@ create table if not exists pending_emails (
                                                 e.target.reset(); 
                                             }} className="flex flex-col gap-2">
                                                 <div className="flex flex-col sm:flex-row gap-2">
-                                                    <input name="taskText" type="text" placeholder="What do you need to do?" className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" autoFocus />
-                                                    <select name="taskAssignee" className="border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white" defaultValue={currentUser?.id}>
+                                                    <input id="tm-new-text" name="taskText" type="text" placeholder="What do you need to do?" className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" autoFocus />
+                                                    <select id="tm-assignee" name="taskAssignee" className="border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white" defaultValue={currentUser?.id}>
                                                         <option value={currentUser?.id}>Me</option>
                                                         {allPossibleAssignees.filter(u => (u.id || u.email) !== currentUser?.id).map(u => (
                                                             <option key={u.id || u.email} value={u.id || u.email}>{u.name || u.email}</option>
@@ -1531,11 +1558,11 @@ create table if not exists pending_emails (
                                                 <div className="flex flex-col sm:flex-row gap-2 items-center">
                                                     <div className="flex items-center gap-1 w-full sm:w-auto">
                                                         <span className="text-xs text-gray-500">Start:</span>
-                                                        <input name="taskStartDate" type="date" defaultValue={getTodayISO()} className="border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                                        <input id="tm-start" name="taskStartDate" type="date" defaultValue={getTodayISO()} className="border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" />
                                                     </div>
                                                     <div className="flex items-center gap-1 w-full sm:w-auto">
                                                         <span className="text-xs text-gray-500">Due:</span>
-                                                        <input name="taskEndDate" type="date" defaultValue={getTodayISO()} className="border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                                        <input id="tm-end" name="taskEndDate" type="date" defaultValue={getTodayISO()} className="border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" />
                                                     </div>
                                                     <button type="submit" className="bg-indigo-600 text-white px-4 py-1.5 rounded text-sm font-medium whitespace-nowrap ml-auto">Add Task</button>
                                                 </div>
