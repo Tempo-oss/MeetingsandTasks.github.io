@@ -548,20 +548,20 @@ create table if not exists pending_emails (
                              ) : (
                                  chartData.map((d, i) => (
                                      <div key={i} className="flex flex-col items-center min-w-[60px] flex-1 group relative">
-                                        <div className="text-xs font-bold text-gray-600 mb-1 opacity-0 group-hover:opacity-100 transition-opacity absolute -top-5">{d.count}</div>
-                                        <div 
-                                            className="w-full max-w-[40px] bg-tempo-red rounded-t-md hover:bg-tempo-hover transition-all relative"
-                                            style={{ height: `${(d.count / maxChartVal) * 100}%`, minHeight: '4px' }}
-                                        ></div>
-                                        <div className="text-[10px] text-gray-500 mt-2 truncate w-full text-center" title={d.name}>{d.name}</div>
-                                     </div>
-                                 ))
+                                         <div className="text-xs font-bold text-gray-600 mb-1 opacity-0 group-hover:opacity-100 transition-opacity absolute -top-5">{d.count}</div>
+                                         <div 
+                                             className="w-full max-w-[40px] bg-tempo-red rounded-t-md hover:bg-tempo-hover transition-all relative"
+                                             style={{ height: `${(d.count / maxChartVal) * 100}%`, minHeight: '4px' }}
+                                         ></div>
+                                         <div className="text-[10px] text-gray-500 mt-2 truncate w-full text-center" title={d.name}>{d.name}</div>
+                                      </div>
+                                  ))
                              )}
                         </div>
                     </div>
 
                     {/* Filters and List... (styling updated to red) */}
-                     <div className="bg-white p-4 rounded-xl border border-gray-200 flex flex-wrap gap-4 items-end shadow-sm">
+                      <div className="bg-white p-4 rounded-xl border border-gray-200 flex flex-wrap gap-4 items-end shadow-sm">
                         <div className="flex flex-col gap-1 w-full sm:w-auto flex-1 min-w-[150px]">
                             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Owner</label>
                             <select value={filterOwner} onChange={(e) => setFilterOwner(e.target.value)} className="text-sm border-gray-300 rounded-md shadow-sm border p-2 w-full focus:ring-2 focus:ring-tempo-red outline-none">
@@ -586,7 +586,7 @@ create table if not exists pending_emails (
                         </button>
                     </div>
                     {/* ... Report List ... */}
-                     {reportData.length === 0 ? (
+                      {reportData.length === 0 ? (
                         <div className="text-center py-12 text-gray-500 bg-white rounded-xl border border-dashed border-gray-300">No tasks found matching your filters.</div>
                     ) : (
                         <div className="space-y-8">
@@ -968,6 +968,41 @@ create table if not exists pending_emails (
                 });
             };
 
+            // -- NOTIFICATION HELPERS --
+            const handleTaskCreationNotifications = async (task) => {
+                if (!client || !task.assignee) return;
+                
+                const assigneeId = task.assignee;
+                // Don't notify self of assignment, but DO check for immediate reminders if required
+                const isSelf = assigneeId === currentUser?.id;
+                
+                const user = teamMembers.find(u => u.email === assigneeId || u.id === assigneeId) || colleagues.find(c => c.email === assigneeId || c.id === assigneeId);
+                const email = user ? user.email : (assigneeId.includes('@') ? assigneeId : null);
+                const name = user ? user.name : "there";
+                
+                if (!email) return;
+
+                // 1. Assignment Notification
+                if (!isSelf) {
+                    await queueEmail(email, `New Task Assigned: ${task.text}`, `Hi ${name},\n\nYou have been assigned a new task: "${task.text}".\nStart: ${task.start_date || 'N/A'}\nDue: ${task.end_date || 'N/A'}\n\n- MeetingMate`);
+                }
+
+                // 2. Immediate Due Date Reminder (< 2 days from creation)
+                if (task.end_date) {
+                    const today = new Date();
+                    today.setHours(0,0,0,0);
+                    const due = new Date(task.end_date);
+                    due.setHours(0,0,0,0);
+                    const diffDays = (due - today) / (1000 * 60 * 60 * 24);
+                    
+                    if (diffDays <= 2) {
+                         await queueEmail(email, `Reminder: Task Due Soon`, `Hi ${name},\n\nThis is an immediate reminder that the task "${task.text}" created just now is due on ${task.end_date} (within 2 days).\n\n- MeetingMate`);
+                         // Update DB to say reminder sent so polling doesn't send it again
+                         await client.from('tasks').update({ reminder_sent: true }).eq('id', task.id);
+                    }
+                }
+            };
+
             const handleGoogleLogin = async () => { if (!client) return; const { error } = await client.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.href, scopes: 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/documents.readonly' } }); if (error) alert(error.message); };
             const handleEmailLogin = async (email) => { if (!client) return; const { error } = await client.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href } }); if (error) alert(error.message); };
             const handlePasswordLogin = async (email, password) => { if (!client) return; const { error } = await client.auth.signInWithPassword({ email, password }); if (error) alert(error.message); };
@@ -1013,26 +1048,32 @@ create table if not exists pending_emails (
             const checkAndSendReminders = async (currentTasks, currentTeam) => {
                 if (!client) return;
                 const today = new Date();
-                const twoDaysFromNow = new Date();
+                today.setHours(0,0,0,0);
+                
+                // Look ahead 2 days
+                const twoDaysFromNow = new Date(today);
                 twoDaysFromNow.setDate(today.getDate() + 2);
-                const targetDateStr = twoDaysFromNow.toISOString().split('T')[0];
-
-                const tasksDueSoon = currentTasks.filter(t => 
-                    t.end_date === targetDateStr && 
-                    !t.done && 
-                    t.status !== 'completed' &&
-                    t.reminder_sent !== true 
-                );
+                
+                // Filter for tasks due within the window [today, today+2]
+                // that haven't had a reminder sent yet
+                const tasksDueSoon = currentTasks.filter(t => {
+                    if (!t.end_date) return false;
+                    const due = new Date(t.end_date);
+                    due.setHours(0,0,0,0);
+                    
+                    return due <= twoDaysFromNow && due >= today && 
+                           !t.done && t.status !== 'completed' &&
+                           t.reminder_sent !== true; 
+                });
 
                 if (tasksDueSoon.length > 0) {
-                    console.log(`Found ${tasksDueSoon.length} tasks due on ${targetDateStr} needing reminders.`);
+                    console.log(`Found ${tasksDueSoon.length} tasks due soon.`);
                     
                     for (const task of tasksDueSoon) {
                         const assigneeId = task.assignee;
                         if (!assigneeId) continue;
 
                         const user = currentTeam.find(u => u.email === assigneeId || u.id === assigneeId);
-                        
                         const email = user ? user.email : (assigneeId.includes('@') ? assigneeId : null);
                         const name = user ? user.name : "there";
 
@@ -1040,7 +1081,7 @@ create table if not exists pending_emails (
                             await queueEmail(
                                 email,
                                 `Reminder: Task Due Soon`,
-                                `Hi ${name},\n\nJust a reminder that the task "${task.text}" is due in 2 days (${targetDateStr}).\n\n- MeetingMate`
+                                `Hi ${name},\n\nJust a reminder that the task "${task.text}" is due on ${task.end_date}.\n\n- MeetingMate`
                             );
                             await client.from('tasks').update({ reminder_sent: true }).eq('id', task.id);
                         }
@@ -1105,6 +1146,7 @@ create table if not exists pending_emails (
                             if (taskText) {
                                 const taskId = `t_${event.id}_${taskText.substring(0, 5).replace(/\s/g, '')}`;
                                 await client.from('tasks').upsert({ id: taskId, meeting_id: mId, text: taskText, assignee: currentUser.id, status: 'pending' }, { ignoreDuplicates: true });
+                                // Note: Sync might create duplicates if we notify here, so we skip notification for basic sync to avoid spam.
                             }
                         }
 
@@ -1307,8 +1349,15 @@ create table if not exists pending_emails (
                              if (existingTexts.has(normalizedText)) continue;
 
                              const taskId = `t_doc_${Date.now()}_${Math.floor(Math.random()*10000)}`;
-                             setTasks(prev => [...prev, { id: taskId, meetingId: meeting.id, text: task.text, assignee: task.assignee, status: 'pending', start_date: taskStartDate, end_date: null }]);
-                             if (client) { await client.from('tasks').insert({ id: taskId, meeting_id: meeting.id, text: task.text, assignee: task.assignee, status: 'pending', start_date: taskStartDate, end_date: null }); }
+                             const newTaskObj = { id: taskId, meeting_id: meeting.id, text: task.text, assignee: task.assignee, status: 'pending', start_date: taskStartDate, end_date: null };
+                             
+                             setTasks(prev => [...prev, { ...newTaskObj, meetingId: meeting.id }]); // update local
+                             
+                             if (client) { 
+                                 await client.from('tasks').insert(newTaskObj); 
+                                 // NOTIFICATION: Trigger for imported tasks
+                                 await handleTaskCreationNotifications(newTaskObj);
+                             }
                              
                              existingTexts.add(normalizedText); // Add to set to prevent duplicates within the same import batch
                              createdCount++;
@@ -1342,14 +1391,23 @@ create table if not exists pending_emails (
                 setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t));
                 if (dbStatus === 'connected' && client) { 
                     await client.from('tasks').update(updates).eq('id', taskId); 
+                    
+                    // COMPLETION NOTIFICATION
                     if (updates.status === 'completed' || updates.done === true) {
                         const task = tasks.find(t => t.id === taskId);
                         if (task) {
                             const assigneeId = task.assignee;
                             const assigneeUser = teamMembers.find(m => m.email === assigneeId || m.id === assigneeId) || colleagues.find(c => c.email === assigneeId || c.id === assigneeId);
                             if (assigneeUser && assigneeUser.team) {
+                                // Find manager of the team
                                 const manager = teamMembers.find(m => (m.team === assigneeUser.team && m.role === 'Owner') || (m.managed_teams && m.managed_teams.includes(assigneeUser.team)));
-                                if (manager && manager.email) { queueEmail(manager.email, `Task Completed: ${task.text}`, `Hi ${manager.name},\n\n${assigneeUser.name} has completed the task: "${task.text}".\n\n- MeetingMate`); }
+                                if (manager && manager.email) { 
+                                    queueEmail(
+                                        manager.email, 
+                                        `Task Completed: ${task.text}`, 
+                                        `Hi ${manager.name},\n\n${assigneeUser.name} has completed the task: "${task.text}".\n\n- MeetingMate`
+                                    ); 
+                                }
                             }
                         }
                     }
@@ -1359,9 +1417,15 @@ create table if not exists pending_emails (
             const handleAddStandaloneTask = (text, assigneeId, start, end) => {
                 if (!text.trim()) return;
                 const newId = `t_${Date.now()}`;
-                const newTask = { id: newId, meeting_id: 'standalone', text: text, assignee: assigneeId || currentUser.id, status: 'pending', start_date: getTodayISO(), end_date: getTodayISO() };
+                const newTask = { id: newId, meeting_id: 'standalone', text: text, assignee: assigneeId || currentUser.id, status: 'pending', start_date: start || getTodayISO(), end_date: end || getTodayISO() };
+                
                 setTasks(prev => [newTask, ...prev]);
-                if (dbStatus === 'connected' && client) { client.from('tasks').insert(newTask).then(({error}) => { if(error) console.error("Error", error); }); }
+                if (dbStatus === 'connected' && client) { 
+                    client.from('tasks').insert(newTask).then(({error}) => { 
+                        if(error) console.error("Error", error); 
+                        else handleTaskCreationNotifications(newTask); // NOTIFICATION: Trigger for personal/manual tasks
+                    }); 
+                }
                 setShowQuickAdd(false);
             };
 
@@ -1597,17 +1661,14 @@ create table if not exists pending_emails (
                         // Modified onAdd for "New Task" Notification
                         onAdd={(mId, text, assignee, start, end) => { 
                             const newId = `t_${Date.now()}`; 
-                            setTasks(prev => [...prev, { id: newId, meetingId: mId, text, assignee, status: 'pending', start_date: start, end_date: end }]); 
+                            const newTaskObj = { id: newId, meeting_id: mId, text, assignee, status: 'pending', start_date: start, end_date: end };
+                            setTasks(prev => [...prev, { ...newTaskObj, meetingId: mId }]); 
+                            
                             if (dbStatus === 'connected' && client) { 
-                                client.from('tasks').insert({ id: newId, meeting_id: mId, text, assignee, status: 'pending', start_date: start, end_date: end }).then(); 
-                                
-                                // Email Logic: If assigned to someone else
-                                if (assignee !== currentUser.id) {
-                                    const assigneeUser = teamMembers.find(m => m.email === assignee || m.id === assignee) || colleagues.find(c => c.email === assignee || c.id === assignee);
-                                    if (assigneeUser && assigneeUser.email) {
-                                        queueEmail(assigneeUser.email, `New Task Assigned: ${text}`, `Hi ${assigneeUser.name},\n\nYou have been assigned a new task: "${text}".\nStart: ${start}\nDue: ${end}\n\n- MeetingMate`);
-                                    }
-                                }
+                                client.from('tasks').insert(newTaskObj).then(() => {
+                                    // NOTIFICATION: Trigger for meeting tasks
+                                    handleTaskCreationNotifications(newTaskObj);
+                                }); 
                             } 
                         }} 
                         meetingId={m.id} teamMembers={teamMembers} onImport={() => handleImportFromDoc(m)} />
